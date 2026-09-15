@@ -36,7 +36,7 @@ It is built on two libraries that are used, not forked:
 ```bash
 uv venv --python 3.12 .venv
 uv pip install --python .venv/bin/python -e ../receipts -e ../acceptor -e . pytest
-.venv/bin/python -m pytest -q          # 618 tests
+.venv/bin/python -m pytest -q          # 627 tests
 
 uv pip install --python .venv/bin/python -e '.[zh]'   # optional: jieba
 ```
@@ -351,13 +351,25 @@ call goes to `<state>/spend.jsonl` whether it helped or not.
 
 ### `precedent hooks install claude-code` — the six-hook suite
 
-Dry-run (the default) prints the exact merge it *would* perform on
-`settings.json`, the hooks block on its own, an inventory of every script with
-its sha256, and the decision contract; `--show-scripts` adds every script in
-full. `--apply` writes the scripts, then **backs up** `settings.json` into
+Dry-run (the default) prints the two things you ask before an `--apply` — **the
+concrete path your current `settings.json` would be copied to** (not a `<ts>`
+placeholder: the same naming function `--apply` uses, collision suffix included)
+and **the exact unified diff**, byte level, from what is on disk now to what
+would be written, with the sha256 of both sides in the header. Then the merged
+file in full, the hooks block on its own, an inventory of every script with its
+sha256, and the decision contract; `--show-scripts` adds every script in full.
+
+`--apply` writes the scripts, then **backs up** `settings.json` into
 `<state>/backups/` and merges the block. `--scripts-only` stops before touching
 settings. Both `install` and `uninstall` are idempotent: a second run reports
-"nothing changed" and writes no second backup.
+`idempotent : yes — nothing to change`, prints an empty diff, and writes no
+second backup.
+
+`uninstall --apply` round-trips: the install receipt records whether a `hooks`
+key existed *before* the merge, so uninstalling removes a `hooks` object
+precedent created and leaves one you already had — including an empty one. A
+`settings.json` that had no hooks at all comes back byte for byte
+(`test_install_then_uninstall_round_trips_settings_json_byte_for_byte`).
 
 | event | script | timeout | what it does |
 |---|---|---|---|
@@ -895,6 +907,13 @@ src/precedent/
   `~~~`) are stripped first, because a pasted log that reads `ERROR: don't use
   pip` is something the user is *showing* the agent. A correction written
   inside a fenced block is therefore missed.
+* **The miner reproduces your own sentences verbatim, and there is no DLP pass
+  on its output.** `mine --md`, `report --md` and `docket` print the correction
+  quote, and a correction can carry anything you typed — on this machine one
+  mined quote contained a phone number and a WeChat id (see
+  [DEMO.md](../../DEMO.md) §1, where it is the file's single redaction). The
+  secret scan runs on `improve` *drafts*, which is a different path. Read a
+  mined report before you paste it anywhere.
 
 ### The examiner
 

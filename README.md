@@ -79,6 +79,13 @@ and every report says which one ran. Nothing is silently degraded.
 The first four minutes cost **zero model calls** and write nothing to your
 Claude home.
 
+> **[DEMO.md](DEMO.md)** is this quickstart actually run, on a real machine, with
+> every command and its verbatim output — including the candidate that **failed**
+> the temporal gate and why, the exact `settings.json` diff a `--dry-run` prints,
+> a deny/allow proof against a throwaway Claude home, and a before/after
+> fingerprint of `~/.claude` with every changed file attributed. It ends with the
+> three-command runbook for turning enforcement on yourself.
+
 ### 1. `precedent init` — what is actually in there (10 s, read-only)
 
 ```bash
@@ -424,8 +431,9 @@ on Python 3.11 and 3.12.
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for the rules that matter (stdlib only;
 never touch a real `~/.claude` in a test; every safety invariant needs a test
-that would fail without it) and [SECURITY.md](SECURITY.md) for the threat model,
-the fail-open semantics and how to uninstall.
+that would fail without it), [SECURITY.md](SECURITY.md) for the threat model,
+the fail-open semantics and how to uninstall, and [DEMO.md](DEMO.md) for a full
+run on a real machine with the audit that proves `~/.claude` was not touched.
 
 Licensed under the Apache License 2.0 — see [LICENSE](LICENSE) and
 [NOTICE](NOTICE).
@@ -480,6 +488,11 @@ Python 3.11+（建议 3.12），**纯标准库**。唯一的可选依赖是 `pre
 写明当前用的是哪一种，绝不静默降级。
 
 ## 五分钟上手（前四分钟零模型调用、零写入）
+
+> **[DEMO.md](DEMO.md)** 是这一节在真机上的实录：每条命令 + 逐字输出，包括**没
+> 通过**时序出生门的候选规则和原因、`--dry-run` 打印的 `settings.json` 精确
+> diff、在一次性假 home 上的 deny/allow 端到端验证，以及 `~/.claude` 运行前后
+> 的指纹对比（每个变动文件都有归因）。最后是你自己开启强制执行的三条命令。
 
 ```bash
 precedent init                        # 10 秒首屏：会话/工件/从未加载/截断/带外写入

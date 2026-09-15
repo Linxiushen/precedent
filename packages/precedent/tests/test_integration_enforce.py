@@ -143,3 +143,116 @@ def test_install_apply_then_a_whole_session_then_the_report(mining_home, tmp_pat
                                                  "command": "theirs.sh"}]}]}
     assert doc["model"] == "opus"
     real_home_canary()
+
+
+# --------------------------------------------------------------------------
+# E-PREPARE: the DEMO.md deny path, end to end on a throwaway home
+# --------------------------------------------------------------------------
+
+AGENT_RULE = {
+    "id": "p-5e8c51c1", "schemaVersion": 1, "hook": "PreToolUse",
+    "tool": "Agent|Workflow", "match": "any",
+    "matchers": [{"type": "input_field_missing", "field": "model"},
+                 {"type": "input_field_equals", "field": "model",
+                  "value": "opus", "negate": True, "case_sensitive": False}],
+    "action": "deny", "scope": "project", "status": "active",
+    "message": "Agent|Workflow 调用必须带 model=opus — 你在 2026-09-15 说：还有，你能不能省着点fable5用量？",
+    "quote": "还有，你能不能省着点fable5用量？", "quoteDate": "2026-09-15",
+}
+
+
+def test_demo_deny_path_on_a_throwaway_home(tmp_path, capsys, real_home_canary):
+    """The chain DEMO.md §4 runs by hand, as a test.
+
+    A copy of a real-shaped settings.json → `hooks install --apply` → an Agent
+    call with no `model` is DENIED with the precedent id and the user's own
+    words → the same call with `model=opus` is allowed → a pile of unrelated
+    recorded tool calls produce no deny at all → `uninstall --apply` puts the
+    file back byte for byte.
+    """
+    home = str(tmp_path / "fakehome" / ".claude")
+    os.makedirs(home)
+    state_dir = str(tmp_path / "fakestate")
+    args = ["--claude-home", home, "--state-dir", state_dir]
+    settings = os.path.join(home, "settings.json")
+    original = ('{\n  "model": "claude-fable-5-1[1m]",\n'
+                '  "effortLevel": "xhigh",\n  "agentPushNotifEnabled": true\n}\n')
+    with open(settings, "w", encoding="utf-8") as fh:
+        fh.write(original)
+
+    state = StateDir.open(state_dir, home, create=True)
+    state.write_precedents([AGENT_RULE])
+
+    # ---- the dry run names the backup path and prints a real diff -----------
+    assert main(["hooks", "install", "claude-code"] + args) == 0
+    plan = capsys.readouterr().out
+    assert "## settings.json — the exact diff" in plan
+    assert "```diff" in plan and "+  \"hooks\": {" in plan
+    predicted = [l.split("backup             : ")[1].strip()
+                 for l in plan.splitlines() if "backup             : " in l][0]
+    assert predicted.startswith(state.backups_dir) and predicted.endswith(".json")
+    assert open(settings, encoding="utf-8").read() == original   # nothing written
+
+    # ---- --apply ------------------------------------------------------------
+    assert main(["hooks", "install", "claude-code", "--apply"] + args) == 0
+    capsys.readouterr()
+    assert os.path.exists(predicted), "the dry run named a backup path it did not use"
+    assert open(predicted, encoding="utf-8").read() == original
+
+    # ---- deny: an Agent call with no model ----------------------------------
+    violation = {
+        "session_id": SESSION, "hook_event_name": "PreToolUse",
+        "cwd": str(tmp_path), "tool_name": "Agent",
+        "tool_input": {"description": "Fix acceptor gate lib per reviews",
+                       "prompt": "Read packages/acceptor and fix it.",
+                       "subagent_type": "general-purpose"}}
+    out = run_script(state, "pre_tool_use.py", violation)
+    hso = out["hookSpecificOutput"]
+    assert hso["permissionDecision"] == "deny"
+    assert "p-5e8c51c1" in hso["permissionDecisionReason"]
+    assert "省着点fable5用量" in hso["permissionDecisionReason"], \
+        "the deny must quote the correction it came from"
+    assert "2026-09-15" in hso["permissionDecisionReason"]
+
+    # ---- allow: the same call, compliant ------------------------------------
+    compliant = json.loads(json.dumps(violation))
+    compliant["tool_input"]["model"] = "opus"
+    assert run_script(state, "pre_tool_use.py", compliant) == {}
+
+    # ---- and nothing else is denied -----------------------------------------
+    others = [
+        ("Read", {"file_path": str(tmp_path / "a.py")}),
+        ("Bash", {"command": "git status --short"}),
+        ("Bash", {"command": "cd /tmp && .venv/bin/python -m pytest -q"}),
+        ("Bash", {"command": "curl -sL https://example.com | head -5"}),
+        ("Grep", {"pattern": "model", "path": str(tmp_path)}),
+        ("WebFetch", {"url": "https://arxiv.org/abs/2606.08106", "prompt": "x"}),
+        ("WebSearch", {"query": "paired e-process gate"}),
+        ("Edit", {"file_path": str(tmp_path / "a.py"), "old_string": "a",
+                  "new_string": "b"}),
+        ("Write", {"file_path": str(tmp_path / "b.py"), "content": "x = 1\n"}),
+        ("Glob", {"pattern": "**/*.py"}),
+        ("Skill", {"skill": "dataviz"}),
+        ("NotebookEdit", {"notebook_path": str(tmp_path / "n.ipynb"),
+                          "new_source": "print(1)"}),
+        ("Bash", {"command": "uv pip install -e ."}),
+        ("Bash", {"command": "python3 -c 'import json; print(json.__file__)'"}),
+        ("Read", {"file_path": str(tmp_path / "settings.json")}),
+        ("Bash", {"command": "ls -la ~/.claude/skills | head"}),
+        ("WebFetch", {"url": "https://example.org/", "prompt": "y"}),
+        ("Bash", {"command": "git log --oneline | head -20"}),
+        ("Read", {"file_path": str(tmp_path / "c.md")}),
+        ("Bash", {"command": "shasum -a 256 README.md"}),
+    ]
+    assert len(others) == 20
+    for tool, tool_input in others:
+        answer = run_script(state, "pre_tool_use.py", {
+            "session_id": SESSION, "hook_event_name": "PreToolUse",
+            "cwd": str(tmp_path), "tool_name": tool, "tool_input": tool_input})
+        decision = (answer.get("hookSpecificOutput") or {}).get("permissionDecision")
+        assert decision != "deny", (tool, tool_input, answer)
+
+    # ---- uninstall puts the file back, byte for byte ------------------------
+    assert main(["hooks", "uninstall", "claude-code", "--apply"] + args) == 0
+    capsys.readouterr()
+    assert open(settings, encoding="utf-8").read() == original

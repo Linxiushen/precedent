@@ -38,6 +38,7 @@ state dir's ``hooks/`` and carries ``--precedent-hook <Event>`` — so
 
 from __future__ import annotations
 
+import difflib
 import hashlib
 import json
 import os
@@ -51,12 +52,16 @@ __all__ = [
     "MARKER",
     "OWNERSHIP_TOOLS",
     "SettingsUnreadable",
+    "backup_path_for",
     "backup_settings",
     "hooks_block",
+    "hooks_key_was_ours",
     "install",
     "foreign_entries_in_our_hooks_dir",
     "is_precedent_entry",
     "merge_settings",
+    "settings_diff",
+    "settings_text",
     "plib_source",
     "read_settings",
     "render_hook_script",
@@ -372,11 +377,20 @@ def foreign_entries_in_our_hooks_dir(settings, hooks_dir: str) -> list[dict]:
     return out
 
 
-def uninstall_settings(existing: dict | None, hooks_dir: str) -> tuple[dict, int]:
+def uninstall_settings(existing: dict | None, hooks_dir: str,
+                       drop_empty_hooks: bool = False) -> tuple[dict, int]:
     """Remove only our entries.  Returns ``(settings, n_removed)``.
 
     "Only ours" is literal: an event key we took nothing out of is left exactly
     as it was, including an empty list the user happened to have there.
+
+    ``drop_empty_hooks`` removes the now-empty ``hooks`` object as well.  The
+    caller passes it only when the install receipt recorded that there was no
+    ``hooks`` key before we merged — i.e. when leaving ``"hooks": {}`` behind
+    would mean uninstall did not round-trip.  Without that evidence the key
+    stays, because deleting one we might not have created is the one
+    destructive thing in an operation whose whole contract is "remove only
+    ours".
     """
     merged = json.loads(json.dumps(existing)) if isinstance(existing, dict) else {}
     hooks = merged.get("hooks")
@@ -396,11 +410,8 @@ def uninstall_settings(existing: dict | None, hooks_dir: str) -> tuple[dict, int
             hooks[event] = kept
         else:
             hooks.pop(event, None)
-    # The ``hooks`` key itself is left alone even when it ends up empty: we do
-    # not know whether the user had it before we merged, and an empty object is
-    # a no-op for Claude Code.  Deleting a key we are not sure we created would
-    # be the one destructive thing in an operation whose whole contract is
-    # "remove only our entries".
+    if drop_empty_hooks and removed and not hooks:
+        merged.pop("hooks", None)
     return merged, removed
 
 
@@ -408,27 +419,69 @@ def uninstall_settings(existing: dict | None, hooks_dir: str) -> tuple[dict, int
 # the only writes that leave the state dir
 # --------------------------------------------------------------------------
 
-def backup_settings(state, settings_path: str, now=None) -> str | None:
-    """Copy ``settings.json`` into ``<state>/backups/`` before we touch it."""
+def backup_path_for(state, settings_path: str, now=None) -> str | None:
+    """The exact path :func:`backup_settings` would write — without writing it.
+
+    ``--dry-run`` prints this, so "where does my old file go" is a path you can
+    read before you decide, not a ``<ts>`` placeholder you have to trust.  It is
+    the *same* naming logic, collision suffix included, so the only way the
+    printed path and the written one differ is if a second backup lands in the
+    same second between the dry run and the apply.
+    """
     if not os.path.isfile(settings_path):
         return None
-    with open(settings_path, "r", encoding="utf-8") as fh:
-        body = fh.read()
     # Two --apply runs inside the same second must not share a filename: the
     # second backup would overwrite the first, and the file it overwrote is the
     # only copy of what the user had before the first merge.
     base = f"settings-{stamp(now)}"
     dest = state.path("backups", base + ".json")
-    os.makedirs(os.path.dirname(dest), exist_ok=True)
     n = 1
     while os.path.exists(dest):
         n += 1
         dest = state.path("backups", f"{base}-{n}.json")
+    return dest
+
+
+def backup_settings(state, settings_path: str, now=None) -> str | None:
+    """Copy ``settings.json`` into ``<state>/backups/`` before we touch it."""
+    dest = backup_path_for(state, settings_path, now=now)
+    if dest is None:
+        return None
+    with open(settings_path, "r", encoding="utf-8") as fh:
+        body = fh.read()
+    os.makedirs(os.path.dirname(dest), exist_ok=True)
     with open(dest, "w", encoding="utf-8") as fh:
         fh.write(body)
     state.write_json(dest[:-len(".json")] + ".meta.json", {
         "source": settings_path, "backedUpAt": now_iso(now), "bytes": len(body)})
     return dest
+
+
+def settings_text(payload: dict) -> str:
+    """The exact bytes ``--apply`` writes.  One definition, so the diff the dry
+    run prints and the file the apply writes cannot drift apart."""
+    return json.dumps(payload, ensure_ascii=False, indent=2) + "\n"
+
+
+def settings_diff(settings_path: str, merged: dict) -> list[str]:
+    """Unified diff from what is on disk **now** to the exact bytes ``--apply``
+    would write.  Byte level on purpose: if the merge also reformats a file the
+    user indented by hand, that shows up here rather than as a surprise.
+    """
+    try:
+        with open(settings_path, "r", encoding="utf-8") as fh:
+            before = fh.read()
+        before_label = settings_path
+    except OSError:
+        before, before_label = "", settings_path + "  (does not exist)"
+    after = settings_text(merged)
+    return list(difflib.unified_diff(
+        before.splitlines(), after.splitlines(),
+        fromfile=f"{before_label}  (now, sha256 {sha256_text(before)[:12]}…)"
+                 if before else f"{before_label}",
+        tofile=f"{settings_path}  (after --apply, sha256 "
+               f"{sha256_text(after)[:12]}…)",
+        n=3, lineterm=""))
 
 
 def write_settings(settings_path: str, payload: dict) -> str:
@@ -449,8 +502,7 @@ def write_settings(settings_path: str, payload: dict) -> str:
         pass
     tmp = "%s.precedent.%d.tmp" % (settings_path, os.getpid())
     with open(tmp, "w", encoding="utf-8") as fh:
-        json.dump(payload, fh, ensure_ascii=False, indent=2)
-        fh.write("\n")
+        fh.write(settings_text(payload))
         fh.flush()
         os.fsync(fh.fileno())
     if mode is not None:
@@ -492,6 +544,15 @@ def install(state, rules: list[dict], settings_path: str | None = None,
             out["receipt"] = _write_receipt(state, rules, block, out, now=now)
             return out
         merged = merge_settings(existing, block)
+        # Remember it now: after the merge there is no way to tell a hooks key
+        # we created from one the user already had, and `uninstall` needs to
+        # know to round-trip the file back to what it was.  The answer is
+        # STICKY: on a second --apply the key exists *because of the first one*,
+        # and overwriting the receipt with "it existed" would leave a
+        # `"hooks": {}` scar behind on uninstall.
+        out["hooks_key_existed"] = (
+            False if hooks_key_was_ours(state)
+            else bool(isinstance(existing, dict) and "hooks" in existing))
         if json.dumps(existing, sort_keys=True) != json.dumps(merged, sort_keys=True):
             out["backup"] = backup_settings(state, settings_path, now=now)
             write_settings(settings_path, merged)
@@ -512,6 +573,7 @@ def _write_receipt(state, rules, block, out, now=None) -> str:
         "settingsPath": out.get("settings"),
         "settingsWritten": bool(out.get("changed")),
         "settingsRefused": out.get("refused"),
+        "hooksKeyExisted": out.get("hooks_key_existed"),
         "backup": out.get("backup"),
         "scripts": {name: {"sha256": sha256_text(body), "bytes": len(body)}
                     for name, body in bodies.items()},
@@ -521,6 +583,18 @@ def _write_receipt(state, rules, block, out, now=None) -> str:
                   for r in rules],
     }
     return state.write_json(state.install_receipt_path, receipt)
+
+
+def hooks_key_was_ours(state) -> bool:
+    """Did *this* install create the ``hooks`` object in settings.json?
+
+    Read from the install receipt, which is written by ``--apply`` before
+    anything else can edit the file.  No receipt (or an older one that predates
+    the field) answers ``False``, so the conservative behaviour — leave the key
+    alone — is what happens when we do not know.
+    """
+    receipt = state.read_json(state.install_receipt_path, default=None)
+    return isinstance(receipt, dict) and receipt.get("hooksKeyExisted") is False
 
 
 def uninstall(state, settings_path: str, now=None) -> dict:
@@ -533,7 +607,9 @@ def uninstall(state, settings_path: str, now=None) -> dict:
     if kind == SETTINGS_UNREADABLE:
         return {"settings": settings_path, "backup": None, "removed": 0,
                 "changed": False, "refused": why}
-    merged, removed = uninstall_settings(existing, state.hooks_dir)
+    merged, removed = uninstall_settings(
+        existing, state.hooks_dir,
+        drop_empty_hooks=hooks_key_was_ours(state))
     out = {"settings": settings_path, "backup": None, "removed": removed,
            "changed": False, "refused": None}
     if removed == 0 or json.dumps(existing, sort_keys=True) == json.dumps(
@@ -736,7 +812,7 @@ _EXAMPLE_DENY = {
 
 def render_plan(state, rules: list[dict], settings_path: str,
                 apply: bool = False, uninstall: bool = False,
-                show_scripts: bool = False) -> tuple[str, dict]:
+                show_scripts: bool = False, now=None) -> tuple[str, dict]:
     """Human-readable plan + the settings object that would be written."""
     bodies = render_scripts(state.root, state.claude_home)
     block = hooks_block(rules, state.hooks_dir)
@@ -745,7 +821,8 @@ def render_plan(state, rules: list[dict], settings_path: str,
     if refused:
         merged, removed, idempotent = existing, 0, True
     elif uninstall:
-        merged, removed = uninstall_settings(existing, state.hooks_dir)
+        merged, removed = uninstall_settings(
+            existing, state.hooks_dir, drop_empty_hooks=hooks_key_was_ours(state))
         idempotent = json.dumps(existing, sort_keys=True) == json.dumps(
             merged, sort_keys=True)
     else:
@@ -813,8 +890,20 @@ def render_plan(state, rules: list[dict], settings_path: str,
         L.append("  !!                   hooks block below in by hand.")
     if uninstall:
         L.append(f"  entries to remove  : {removed}")
-    L.append(f"  backup             : <state>/backups/settings-<ts>.json "
-             f"(written before any change)")
+    backup_preview = backup_path_for(state, settings_path, now=now)
+    if refused or idempotent:
+        # Nothing is written, so nothing is backed up: say which of the two it
+        # is rather than printing a path that will never exist.
+        L.append("  backup             : none — "
+                 + ("precedent refuses to touch this file" if refused
+                    else "nothing to change, so nothing to back up"))
+    elif backup_preview is None:
+        L.append(f"  backup             : none — {settings_path} does not exist "
+                 f"yet, so there is nothing to back up")
+    else:
+        L.append(f"  backup             : {backup_preview}")
+        L.append( "                       (the exact path this run would copy "
+                  "your current file to, before any change)")
     L.append(f"  marker             : every entry we write contains "
              f"`{MARKER}` and points into {state.hooks_dir}/")
     L.append(f"  idempotent         : "
@@ -827,10 +916,21 @@ def render_plan(state, rules: list[dict], settings_path: str,
         L.append(f"The file at {settings_path} {refused}, so there is no merge "
                  "to show: your file stays exactly as it is.")
     else:
+        diff = settings_diff(settings_path, merged)
+        L.append("## settings.json — the exact diff")
+        L.append("")
+        if not diff:
+            L.append("(empty — the file on disk is already byte-identical to "
+                     "what this run would write)")
+        else:
+            L.append("```diff")
+            L.extend(diff)
+            L.append("```")
+        L.append("")
         L.append("## settings.json — the exact result precedent would write")
         L.append("")
         L.append("```json")
-        L.append(json.dumps(merged, ensure_ascii=False, indent=2))
+        L.append(settings_text(merged).rstrip("\n"))
         L.append("```")
     if not uninstall:
         L.append("")

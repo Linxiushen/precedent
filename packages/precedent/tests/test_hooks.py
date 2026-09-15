@@ -18,10 +18,13 @@ import subprocess
 import sys
 
 import pytest
-from precedent.hooks import (HOOK_EVENTS, MARKER, backup_settings, hooks_block,
+from precedent.hooks import (HOOK_EVENTS, MARKER, backup_path_for,
+                             backup_settings, hooks_block,
+                             hooks_key_was_ours,
                              install, is_precedent_entry, merge_settings,
                              pre_tool_matcher, render_hook_script, render_plan,
-                             render_scripts, render_status, status, uninstall,
+                             render_scripts, render_status, settings_diff,
+                             settings_text, status, uninstall,
                              uninstall_settings)
 from precedent.state import StateDir
 
@@ -215,6 +218,96 @@ def test_render_plan_shows_the_merge_and_the_script_and_writes_nothing(tmp_path)
     assert not os.path.exists(state.hook_script_path)
 
 
+def test_dry_run_prints_the_concrete_backup_path_and_the_exact_diff(tmp_path):
+    """--dry-run answers the two questions you ask before an --apply: where does
+    my old file go, and what exactly changes."""
+    state = StateDir.open(str(tmp_path / "state"), str(tmp_path / "claude"), create=True)
+    os.makedirs(state.claude_home)
+    settings = os.path.join(state.claude_home, "settings.json")
+    with open(settings, "w", encoding="utf-8") as fh:
+        json.dump({"model": "opus"}, fh, indent=2)
+
+    from datetime import datetime, timezone
+    now = datetime(2026, 9, 15, 8, 3, 30, tzinfo=timezone.utc)
+    plan, merged = render_plan(state, [DENY], settings, apply=False, now=now)
+
+    # (1) a path, not a <ts> placeholder, and it is the one --apply would use.
+    predicted = backup_path_for(state, settings, now=now)
+    assert predicted is not None and "<ts>" not in plan
+    assert os.path.dirname(predicted) == state.backups_dir
+    assert os.path.basename(predicted) == "settings-20260915T080330Z.json"
+    assert predicted in plan
+
+    # (2) a real unified diff, from the bytes on disk to the bytes --apply writes
+    assert "## settings.json — the exact diff" in plan
+    assert "```diff" in plan
+    assert "+  \"hooks\": {" in plan
+    assert "+            \"command\": \"python3 " in plan
+    assert " \"model\": \"opus\"," in plan or "-  \"model\": \"opus\"" in plan
+    assert os.path.exists(settings) and not os.path.exists(predicted)
+
+
+def test_the_dry_run_diff_is_the_bytes_apply_actually_writes(tmp_path):
+    state = StateDir.open(str(tmp_path / "state"), str(tmp_path / "claude"), create=True)
+    os.makedirs(state.claude_home)
+    settings = os.path.join(state.claude_home, "settings.json")
+    with open(settings, "w", encoding="utf-8") as fh:
+        fh.write('{\n    "model": "opus"\n}\n')          # the user's own indent
+    before = open(settings, encoding="utf-8").read()
+
+    _plan, merged = render_plan(state, [DENY], settings, apply=False)
+    diff = settings_diff(settings, merged)
+    assert diff, "a merge that changes the file must produce a diff"
+
+    out = install(state, [DENY], settings_path=settings, write_settings_file=True)
+    after = open(settings, encoding="utf-8").read()
+    assert after == settings_text(merged)
+    assert open(out["backup"], encoding="utf-8").read() == before
+
+    # the diff the dry run printed is the diff between the backup it took and
+    # the file it wrote — body lines identical, only the ---/+++ labels differ.
+    import difflib
+    real = list(difflib.unified_diff(before.splitlines(), after.splitlines(),
+                                     n=3, lineterm=""))
+    assert [l for l in diff if not l.startswith(("---", "+++"))] == \
+           [l for l in real if not l.startswith(("---", "+++"))]
+
+
+def test_dry_run_says_none_when_there_is_nothing_to_back_up(tmp_path):
+    state = StateDir.open(str(tmp_path / "state"), str(tmp_path / "claude"), create=True)
+    os.makedirs(state.claude_home)
+    settings = os.path.join(state.claude_home, "settings.json")   # absent
+
+    plan, _merged = render_plan(state, [DENY], settings, apply=False)
+    assert "backup             : none" in plan
+    assert "does not exist" in plan
+    assert backup_path_for(state, settings) is None
+
+    # and once installed, a second dry run is idempotent: empty diff, no backup
+    install(state, [DENY], settings_path=settings, write_settings_file=True)
+    plan2, _ = render_plan(state, [DENY], settings, apply=False)
+    assert "idempotent         : yes" in plan2
+    assert "(empty — the file on disk is already byte-identical" in plan2
+    assert "backup             : none — nothing to change" in plan2
+
+
+def test_backup_path_for_never_collides_and_never_writes(tmp_path):
+    state = StateDir.open(str(tmp_path / "state"), str(tmp_path / "claude"), create=True)
+    os.makedirs(state.claude_home)
+    settings = os.path.join(state.claude_home, "settings.json")
+    with open(settings, "w", encoding="utf-8") as fh:
+        json.dump({"model": "opus"}, fh)
+    from datetime import datetime, timezone
+    now = datetime(2026, 9, 15, 8, 3, 30, tzinfo=timezone.utc)
+
+    first = backup_path_for(state, settings, now=now)
+    assert first == backup_settings(state, settings, now=now)
+    second = backup_path_for(state, settings, now=now)      # same second
+    assert second != first and second.endswith("-2.json")
+    assert second == backup_settings(state, settings, now=now)
+    assert not os.path.exists(backup_path_for(state, settings, now=now))
+
+
 def test_install_writes_only_under_the_state_dir(tmp_path):
     state = StateDir.open(str(tmp_path / "state"), str(tmp_path / "claude"), create=True)
     os.makedirs(state.claude_home)
@@ -227,6 +320,91 @@ def test_install_writes_only_under_the_state_dir(tmp_path):
     assert os.access(state.hook_script_path, os.X_OK)
     assert os.path.exists(state.install_receipt_path)
     assert os.listdir(state.claude_home) == []     # the Claude home is untouched
+
+
+def test_install_then_uninstall_round_trips_settings_json_byte_for_byte(tmp_path):
+    """The file the user gets back is the file they had — no `"hooks": {}` scar."""
+    state = StateDir.open(str(tmp_path / "state"), str(tmp_path / "claude"), create=True)
+    os.makedirs(state.claude_home)
+    settings = os.path.join(state.claude_home, "settings.json")
+    original = '{\n  "model": "claude-fable-5-1[1m]",\n  "effortLevel": "xhigh"\n}\n'
+    with open(settings, "w", encoding="utf-8") as fh:
+        fh.write(original)
+
+    install(state, [DENY], settings_path=settings, write_settings_file=True)
+    assert hooks_key_was_ours(state) is True
+    assert "precedent-hook" in open(settings, encoding="utf-8").read()
+
+    out = uninstall(state, settings)
+    assert out["removed"] == len(HOOK_EVENTS) and out["changed"]
+    back = json.loads(open(settings, encoding="utf-8").read())
+    assert back == json.loads(original)
+    assert "hooks" not in back
+    assert open(settings, encoding="utf-8").read() == original
+
+
+def test_a_second_apply_does_not_forget_who_created_the_hooks_key(tmp_path):
+    """The receipt answer is sticky.
+
+    On the second `--apply` the `hooks` key exists *because the first one made
+    it*.  Recording "it existed" there would make `uninstall` leave a
+    `"hooks": {}` behind — the exact scar this pair of fixes removes.
+    """
+    state = StateDir.open(str(tmp_path / "state"), str(tmp_path / "claude"), create=True)
+    os.makedirs(state.claude_home)
+    settings = os.path.join(state.claude_home, "settings.json")
+    original = '{\n  "model": "opus"\n}\n'
+    with open(settings, "w", encoding="utf-8") as fh:
+        fh.write(original)
+
+    install(state, [DENY], settings_path=settings, write_settings_file=True)
+    assert hooks_key_was_ours(state) is True
+    for _ in range(3):                       # idempotent re-runs
+        install(state, [DENY], settings_path=settings, write_settings_file=True)
+        assert hooks_key_was_ours(state) is True
+
+    uninstall(state, settings)
+    assert open(settings, encoding="utf-8").read() == original
+
+
+def test_uninstall_keeps_a_hooks_key_the_user_already_had(tmp_path):
+    """Their own hooks — and their own empty `hooks` object — survive."""
+    state = StateDir.open(str(tmp_path / "state"), str(tmp_path / "claude"), create=True)
+    os.makedirs(state.claude_home)
+    settings = os.path.join(state.claude_home, "settings.json")
+    theirs = {"model": "opus", "hooks": {"PreToolUse": [
+        {"matcher": "Task", "hooks": [{"type": "command", "command": "mine.sh"}]}]}}
+    with open(settings, "w", encoding="utf-8") as fh:
+        json.dump(theirs, fh, indent=2)
+
+    install(state, [DENY], settings_path=settings, write_settings_file=True)
+    assert hooks_key_was_ours(state) is False
+    uninstall(state, settings)
+    assert json.loads(open(settings, encoding="utf-8").read()) == theirs
+
+    # and an empty hooks object of their own is not ours to delete either
+    empty = {"model": "opus", "hooks": {}}
+    with open(settings, "w", encoding="utf-8") as fh:
+        json.dump(empty, fh, indent=2)
+    install(state, [DENY], settings_path=settings, write_settings_file=True)
+    assert hooks_key_was_ours(state) is False
+    uninstall(state, settings)
+    assert json.loads(open(settings, encoding="utf-8").read()) == empty
+
+
+def test_uninstall_dry_run_shows_the_same_result_as_the_apply(tmp_path):
+    state = StateDir.open(str(tmp_path / "state"), str(tmp_path / "claude"), create=True)
+    os.makedirs(state.claude_home)
+    settings = os.path.join(state.claude_home, "settings.json")
+    with open(settings, "w", encoding="utf-8") as fh:
+        json.dump({"model": "opus"}, fh, indent=2)
+    install(state, [DENY], settings_path=settings, write_settings_file=True)
+
+    plan, merged = render_plan(state, [DENY], settings, uninstall=True)
+    assert "hooks" not in merged
+    assert "entries to remove  : %d" % len(HOOK_EVENTS) in plan
+    uninstall(state, settings)
+    assert json.loads(open(settings, encoding="utf-8").read()) == merged
 
 
 def test_render_hook_script_bakes_in_the_state_dir(tmp_path):
