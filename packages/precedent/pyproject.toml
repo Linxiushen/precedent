@@ -1,0 +1,66 @@
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[project]
+name = "precedent-cli"
+version = "0.1.0"
+description = "A self-evolving Claude Code harness whose core is a verified self-modification loop: mine user corrections, compile them into a deterministic rule DSL, gate them against the record (temporal birth gate), enforce them through hooks, and snapshot/undo the learned state."
+readme = "README.md"
+requires-python = ">=3.11"
+license = "Apache-2.0"
+license-files = ["LICENSE", "NOTICE"]
+authors = [{ name = "The Precedent authors" }]
+maintainers = [{ name = "The Precedent authors" }]
+keywords = [
+  "claude-code", "self-improving-agents", "harness", "hooks",
+  "corrections", "precedent", "rsi", "acceptance-gate", "audit",
+  "agent-memory", "agent-skills", "guardrails", "provenance",
+]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Environment :: Console",
+  "Intended Audience :: Developers",
+  "Natural Language :: English",
+  "Natural Language :: Chinese (Simplified)",
+  "Operating System :: MacOS",
+  "Operating System :: POSIX :: Linux",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Topic :: Software Development :: Quality Assurance",
+  "Topic :: Software Development :: Testing",
+  "Topic :: System :: Monitoring",
+  "Typing :: Typed",
+]
+dependencies = ["receipts", "acceptor"]
+
+[project.urls]
+Homepage = "https://github.com/Linxiushen/precedent"
+Repository = "https://github.com/Linxiushen/precedent"
+Documentation = "https://github.com/Linxiushen/precedent/blob/main/packages/precedent/README.md"
+"Plan page" = "https://claude.ai/artifact/STVtU54PzQ5pfPqr5BMoaT"
+"Bug tracker" = "https://github.com/Linxiushen/precedent/issues"
+"Security policy" = "https://github.com/Linxiushen/precedent/blob/main/SECURITY.md"
+
+[project.optional-dependencies]
+test = ["pytest>=7"]
+# Chinese word segmentation for the correction miner's topic grouping.
+# Entirely optional: without it `precedent mine` falls back to character
+# bigrams and says so (`segmenter: bigram` in the report).
+zh = ["jieba>=0.42"]
+
+[project.scripts]
+precedent = "precedent.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/precedent"]
+
+[tool.hatch.build.targets.sdist]
+include = ["src/", "tests/", "README.md", "LICENSE", "NOTICE", "pyproject.toml"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"

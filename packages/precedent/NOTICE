@@ -1,0 +1,9 @@
+precedent
+Copyright 2026 The precedent authors
+
+This product includes software developed as part of the "自进化 Agent Harness"
+project (packages/precedent), distributed under the Apache License, Version 2.0.
+
+It depends on two sibling packages from the same repository:
+  - receipts  (read-only load receipts / change feed / activation funnel)
+  - acceptor  (anytime-valid acceptance core; the hash-chained ledger)

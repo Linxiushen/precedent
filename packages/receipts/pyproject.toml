@@ -1,0 +1,57 @@
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[project]
+name = "receipts"
+version = "0.1.0"
+description = "Read-only load receipts, change feed and activation funnel for Claude Code learned state (memory, CLAUDE.md, rules, skills)."
+readme = "README.md"
+requires-python = ">=3.11"
+license = "Apache-2.0"
+license-files = ["LICENSE", "NOTICE"]
+authors = [{ name = "The Precedent authors" }]
+maintainers = [{ name = "The Precedent authors" }]
+keywords = [
+  "claude-code", "memory", "skills", "receipts", "provenance",
+  "observability", "change-feed", "activation-funnel", "agent-memory",
+]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Environment :: Console",
+  "Intended Audience :: Developers",
+  "Natural Language :: English",
+  "Operating System :: MacOS",
+  "Operating System :: POSIX :: Linux",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Topic :: Software Development :: Quality Assurance",
+  "Topic :: System :: Monitoring",
+  "Typing :: Typed",
+]
+dependencies = []
+
+[project.urls]
+Homepage = "https://github.com/Linxiushen/precedent"
+Repository = "https://github.com/Linxiushen/precedent"
+Documentation = "https://github.com/Linxiushen/precedent/blob/main/packages/receipts/README.md"
+"Bug tracker" = "https://github.com/Linxiushen/precedent/issues"
+
+[project.optional-dependencies]
+test = ["pytest>=7"]
+
+[project.scripts]
+receipts = "receipts.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/receipts"]
+
+[tool.hatch.build.targets.sdist]
+include = ["src/", "tests/", "README.md", "LICENSE", "NOTICE", "pyproject.toml"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"

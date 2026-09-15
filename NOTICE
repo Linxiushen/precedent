@@ -1,0 +1,56 @@
+Precedent
+Copyright 2026 The Precedent authors
+
+This product includes software developed as part of the "自进化 Agent Harness"
+(self-evolving agent harness) project, distributed under the Apache License,
+Version 2.0.  A copy of the License is in the LICENSE file at the root of this
+repository; you may also obtain it at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+The repository contains three Python packages, all under the same licence:
+
+  packages/precedent  (distribution name: precedent-cli)
+      The CLI and the verified self-modification loop: correction miner, rule
+      DSL, temporal birth gate, docket, hook suite, snapshot/undo, examiner,
+      nightly improver, audit report.
+
+  packages/receipts   (distribution name: receipts)
+      Read-only load receipts, change feed and activation funnel for Claude
+      Code learned state.
+
+  packages/acceptor   (distribution name: acceptor)
+      The anytime-valid acceptance core: paired e-process gates, CTHS spend
+      schedules, protected-task floors, hard constraints and the sha256
+      hash-chained certificate ledger.
+
+Third-party dependencies
+------------------------
+The runtime is the Python standard library.  There are exactly two optional
+extras, and both degrade gracefully when absent:
+
+  precedent-cli[zh]  ->  jieba (MIT License, https://github.com/fxsjy/jieba)
+                         Chinese word segmentation for the correction miner's
+                         topic grouping.  Without it the tokeniser falls back
+                         to character bigrams and every report says which one
+                         ran.
+
+  *[test]            ->  pytest (MIT License, https://pytest.org)
+
+Precedent invokes the `claude` command-line tool as an external subprocess for
+the three optional commands that cost money (`compile --llm`, `improve`,
+`examine`).  That binary is not distributed with, bundled into, or a dependency
+of this project.
+
+Research corpus
+---------------
+`research/` contains the raw data behind the design (a 521-item landscape
+index, 96 deep reads, six narratives, four gap analyses, six independent
+designs and thirteen reviews).  It quotes and summarises third-party papers,
+repositories and issue trackers for the purpose of analysis and citation; the
+summaries are this project's work, the underlying works belong to their
+authors, and every claim carries a URL back to its source.  See
+research/README.md.
+
+"Claude", "Claude Code" and "Anthropic" are trademarks of Anthropic PBC.  This
+project is not affiliated with, endorsed by, or sponsored by Anthropic.

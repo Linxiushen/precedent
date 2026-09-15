@@ -1,0 +1,52 @@
+# ---------------------------------------------------------------------------
+# precedent — repository ignores
+# ---------------------------------------------------------------------------
+
+# Per-package uv virtualenvs (created by scripts/dev.sh; never committed)
+.venv/
+venv/
+env/
+ENV/
+*.egg-info/
+build/
+dist/
+pip-wheel-metadata/
+
+# Python bytecode / caches
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.tox/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+.hypothesis/
+
+# Run artifacts: anything a command in this repo produced rather than a human
+results/
+out/
+outputs/
+scratchpad/
+*.log
+
+# precedent's own state directory, if someone points --state-dir at the repo.
+# Nothing under it belongs in version control: it holds blobs of the user's
+# own files, hook logs, spend records and the hash-chained ledger.
+.precedent/
+*.jsonl.bak
+backups/
+
+# Editors / OS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+.idea/
+.vscode/
+*.swp
+*.swo
+Thumbs.db

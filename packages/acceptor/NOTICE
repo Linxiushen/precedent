@@ -1,0 +1,25 @@
+acceptor
+Copyright 2026 The Precedent authors
+
+This product includes software developed as part of the Precedent project
+("自进化 Agent Harness"), distributed under the Apache License, Version 2.0.
+See the LICENSE file alongside this one, or
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+`acceptor` is a pure decision core: stdlib-only, deterministic, with no I/O
+beyond the JSONL ledger it is handed a path to.  `pytest` (the [test] extra) is
+the only development dependency.
+
+The statistical machinery implements and extends published methods, which are
+cited in the module docstrings and in README.md:
+
+  * paired testing by betting / anytime-valid e-processes
+      PACE (arXiv 2606.08106); Waudby-Smith & Ramdas (2024);
+      Howard, Ramdas, McAuliffe & Sekhon (2021); Ville's inequality
+  * the summable error-budget (CTHS) schedule, Z = 3.387735532
+      SEA (arXiv 2607.00871)
+  * "mechanical rejection overrides LLM approval, never the reverse"
+      the PROCTOR rule
+
+Those works belong to their authors; this is an independent implementation.

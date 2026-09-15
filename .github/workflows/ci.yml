@@ -1,0 +1,127 @@
+# Copyright 2026 The Precedent authors.
+# SPDX-License-Identifier: Apache-2.0
+#
+# All three suites, on Python 3.11 and 3.12, with uv.
+#
+# The suites build synthetic Claude homes under pytest's tmp_path and carry a
+# `real_home_canary` fixture that fails if the real ~/.claude or ~/.precedent
+# was touched.  Nothing here installs hooks, and no job calls `claude`.
+
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Belt and braces: point the tools at a scratch home even though every test
+  # already uses tmp_path, so a bug cannot reach a runner's default location.
+  CLAUDE_CONFIG_DIR: ${{ github.workspace }}/.ci-claude-home
+  PYTHONDONTWRITEBYTECODE: "1"
+
+jobs:
+  test:
+    name: ${{ matrix.package }} · py${{ matrix.python }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.11", "3.12"]
+        package: [receipts, acceptor, precedent]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Create the venv
+        run: uv venv --python ${{ matrix.python }} packages/${{ matrix.package }}/.venv
+
+      - name: Install ${{ matrix.package }}
+        run: |
+          set -euo pipefail
+          PY=packages/${{ matrix.package }}/.venv/bin/python
+          if [ "${{ matrix.package }}" = "precedent" ]; then
+            # precedent's venv carries receipts and acceptor editable
+            uv pip install --python "$PY" \
+              -e packages/receipts -e packages/acceptor -e packages/precedent pytest
+          else
+            uv pip install --python "$PY" -e packages/${{ matrix.package }} pytest
+          fi
+          "$PY" -c "import sys; print(sys.version)"
+
+      - name: pytest
+        working-directory: packages/${{ matrix.package }}
+        run: .venv/bin/python -m pytest -o addopts="" -q --durations=10
+
+      - name: Assert the suite touched no real Claude home
+        run: |
+          set -euo pipefail
+          for d in "$HOME/.claude" "$HOME/.precedent" "$CLAUDE_CONFIG_DIR"; do
+            if [ -e "$d" ]; then
+              echo "::error::a test created or wrote $d"
+              exit 1
+            fi
+          done
+          echo "no Claude home was created by the suite."
+
+  extras:
+    name: optional extras degrade gracefully
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Install precedent WITH the [zh] extra
+        run: |
+          set -euo pipefail
+          uv venv --python 3.12 .venv-zh
+          uv pip install --python .venv-zh/bin/python \
+            -e packages/receipts -e packages/acceptor -e 'packages/precedent[zh]' pytest
+          .venv-zh/bin/python -c "import jieba; print('jieba', jieba.__version__ if hasattr(jieba,'__version__') else 'ok')"
+
+      - name: The precedent suite passes with the extra installed too
+        working-directory: packages/precedent
+        run: ../../.venv-zh/bin/python -m pytest -o addopts="" -q
+
+  package:
+    name: wheels build and the CLI runs from them
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Build all three wheels and sdists
+        run: |
+          set -euo pipefail
+          for p in receipts acceptor precedent; do
+            uv build --out-dir dist "packages/$p"
+          done
+          ls -l dist
+
+      - name: Install the built wheels into a clean venv and smoke-test the CLI
+        run: |
+          set -euo pipefail
+          uv venv --python 3.12 .venv-dist
+          uv pip install --python .venv-dist/bin/python --no-index --find-links dist \
+            precedent-cli receipts acceptor
+          .venv-dist/bin/precedent --version
+          .venv-dist/bin/precedent --help > /dev/null
+          .venv-dist/bin/precedent hooks install claude-code --help > /dev/null
+          echo "CLI runs from the built wheel."

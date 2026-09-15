@@ -1,0 +1,59 @@
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[project]
+name = "acceptor"
+version = "0.2.0"
+description = "Anytime-valid acceptance core for self-modifying agent harnesses: paired e-process gates, error-budget schedules, acceptor-owned instance sampling, protected-task floors, hard constraints, a hash-chained certificate ledger, and an acceptor benchmark with an adversarial regime."
+readme = "README.md"
+requires-python = ">=3.11"
+license = "Apache-2.0"
+license-files = ["LICENSE", "NOTICE"]
+authors = [{ name = "The Precedent authors" }]
+maintainers = [{ name = "The Precedent authors" }]
+keywords = [
+  "e-process", "anytime-valid", "testing-by-betting", "sequential-testing",
+  "self-improving-agents", "harness", "acceptance-gate", "martingale",
+  "alpha-spending", "audit-ledger",
+]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Environment :: Console",
+  "Intended Audience :: Developers",
+  "Intended Audience :: Science/Research",
+  "Natural Language :: English",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Topic :: Scientific/Engineering",
+  "Topic :: Scientific/Engineering :: Mathematics",
+  "Topic :: Software Development :: Quality Assurance",
+  "Typing :: Typed",
+]
+dependencies = []
+
+[project.urls]
+Homepage = "https://github.com/Linxiushen/precedent"
+Repository = "https://github.com/Linxiushen/precedent"
+Documentation = "https://github.com/Linxiushen/precedent/blob/main/packages/acceptor/README.md"
+"Bug tracker" = "https://github.com/Linxiushen/precedent/issues"
+
+[project.optional-dependencies]
+test = ["pytest>=7"]
+
+[project.scripts]
+acceptor-bench = "acceptor.bench:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/acceptor"]
+
+[tool.hatch.build.targets.sdist]
+include = ["src/", "tests/", "README.md", "LICENSE", "NOTICE", "pyproject.toml"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
