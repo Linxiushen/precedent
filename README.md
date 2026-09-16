@@ -1,5 +1,10 @@
 # Precedent
 
+[![CI](https://github.com/Linxiushen/precedent/actions/workflows/ci.yml/badge.svg)](https://github.com/Linxiushen/precedent/actions/workflows/ci.yml)
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
+[![Python 3.11+](https://img.shields.io/badge/python-3.11%20%7C%203.12-blue.svg)](pyproject.toml)
+[![tests](https://img.shields.io/badge/tests-828%20passing-brightgreen.svg)](#tests)
+
 **Every correction is a test.**
 
 Precedent is a self-evolving [Claude Code](https://claude.com/claude-code)
@@ -53,11 +58,20 @@ pipx install precedent-cli          # or: uv tool install precedent-cli
 precedent --version
 ```
 
-> **Not on PyPI yet.** v0.1.0 is the first tagged release and the packages have
-> not been published, so the two commands above are the *intended* install path
-> and do not work today. Install from a clone until they do:
-> `uv tool install ./packages/precedent` (after `uv build`-ing `receipts` and
-> `acceptor`, or from the dev venvs below).
+> **Not on PyPI yet** — `precedent-cli` is reserved but unpublished, so the two
+> commands above are the *intended* install path. Until then, straight from git:
+>
+> ```bash
+> pip install "git+https://github.com/Linxiushen/precedent#subdirectory=packages/receipts" \
+>             "git+https://github.com/Linxiushen/precedent#subdirectory=packages/acceptor" \
+>             "git+https://github.com/Linxiushen/precedent#subdirectory=packages/precedent"
+> precedent init          # read-only; prints the first screen in ~5 s
+> ```
+>
+> Distribution names are `precedent-receipts` / `precedent-acceptor` /
+> `precedent-cli`; the import names stay `receipts` / `acceptor` / `precedent`.
+> (`receipts` on PyPI belongs to someone else — depending on it by that name
+> would have pulled a stranger's package.)
 
 From this repository (what the three packages actually are):
 
