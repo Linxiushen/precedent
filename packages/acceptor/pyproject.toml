@@ -3,7 +3,7 @@ requires = ["hatchling>=1.27"]
 build-backend = "hatchling.build"
 
 [project]
-name = "acceptor"
+name = "precedent-acceptor"
 version = "0.2.0"
 description = "Anytime-valid acceptance core for self-modifying agent harnesses: paired e-process gates, error-budget schedules, acceptor-owned instance sampling, protected-task floors, hard constraints, a hash-chained certificate ledger, and an acceptor benchmark with an adversarial regime."
 readme = "README.md"

@@ -454,10 +454,19 @@ def _fuzz_payloads(rng, target):
 
 @pytest.mark.parametrize("script", [e[1] for e in HOOK_EVENTS])
 def test_fuzzed_payloads_never_break_a_hook(suite, script):
-    """exit 0, stdout is empty or exactly one JSON object, never slow.
+    """exit 0, stdout is empty or exactly one JSON object, never a block.
 
     ``deny``/``ask`` must not appear at all: ``precedents.json`` does not exist,
     so there is no confirmed precedent, so there is nothing that may block.
+
+    Timing is asserted in :func:`test_a_hook_is_fast_relative_to_a_bare_python`
+    rather than here, because the number this loop can measure is
+    ``subprocess.run`` wall clock — interpreter startup plus scheduler — and on
+    a loaded machine that says nothing about the hook.  Measured: the same
+    payloads that pass at ~90 ms idle took 1,530 ms and 4,618 ms at load
+    average 20, while the hook's own recorded work in production was 0.33–0.53
+    ms.  A test that fails because the laptop is busy is a test that teaches
+    people to ignore it.
     """
     rng = random.Random(1337)
     set_guard(suite, True)                 # the guard is armed; still no rules
@@ -470,7 +479,32 @@ def test_fuzzed_payloads_never_break_a_hook(suite, script):
             doc = json.loads(text)         # one object, or the contract is broken
             assert isinstance(doc, dict)
             assert "deny" not in json.dumps(doc) and "ask" not in json.dumps(doc)
-        assert ms < 1000, f"{script} took {ms:.0f} ms on {str(payload)[:80]}"
+
+
+@pytest.mark.parametrize("script", [e[1] for e in HOOK_EVENTS])
+def test_a_hook_is_fast_relative_to_a_bare_python(suite, script):
+    """The hook must not cost much more than starting Python at all.
+
+    The invariant is "never break Claude Code", and the budget that matters is
+    the hook's own work, not the interpreter it is hosted in.  So the ceiling is
+    a *ratio* against a `python3 -c pass` measured on the same machine in the
+    same second: whatever the load is doing to one, it is doing to the other.
+    """
+    baseline = []
+    for _ in range(3):
+        t0 = time.perf_counter()
+        subprocess.run([sys.executable, "-c", "pass"], capture_output=True)
+        baseline.append((time.perf_counter() - t0) * 1000)
+    floor = min(baseline)
+    payload = {"hook_event_name": "PreToolUse", "tool_name": "Bash",
+               "tool_input": {"command": "echo hi"}, "cwd": suite.claude_home}
+    best = min(_run(suite, script, payload)[1] for _ in range(3))
+    # 8x a bare interpreter start, and never less than a 250 ms allowance so a
+    # fast machine does not make the bound absurdly tight
+    ceiling = max(floor * 8, 250)
+    assert best < ceiling, (
+        f"{script}: {best:.0f} ms vs a {floor:.0f} ms bare python "
+        f"(ceiling {ceiling:.0f} ms)")
 
 
 def test_no_hook_writes_outside_the_state_dir(suite, real_home_canary, tmp_path):

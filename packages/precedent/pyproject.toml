@@ -35,7 +35,7 @@ classifiers = [
   "Topic :: System :: Monitoring",
   "Typing :: Typed",
 ]
-dependencies = ["receipts", "acceptor"]
+dependencies = ["precedent-receipts", "precedent-acceptor"]
 
 [project.urls]
 Homepage = "https://github.com/Linxiushen/precedent"
