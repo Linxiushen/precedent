@@ -118,7 +118,7 @@ def _check_line(check: dict) -> str:
     if not check or not check.get("template"):
         return f"  建议检查: （无法自动编译）{(check or {}).get('note', '')}"
     bits = [f"  建议检查: {check['template']}"]
-    for k in ("x", "y", "path", "field", "value", "flag", "preset"):
+    for k in ("x", "y", "path", "field", "value", "flag", "preset", "regex"):
         if check.get(k):
             bits.append(f"{k}={check[k]}")
     bits.append(f"→ {check.get('tool')} {check.get('action')}")
@@ -475,13 +475,18 @@ def render_digest(state, scan_result, mine_result, precedents: list[dict],
     L.append("")
     L.append("## 7. 已确认的先例（enforced）")
     L.append("")
-    if not precedents:
-        L.append("0 条。`precedent compile <topic-id>` → `precedent confirm <id>` → "
+    # `active` is what the hook enforces; a retired rule is inert but still
+    # part of the record, so it is listed under the table, never inside it —
+    # counting a retired rule as enforced is exactly the kind of number that
+    # makes a funnel lie.
+    retired = [r for r in precedents if r.get("status") not in (None, "active")]
+    if not active:
+        L.append("0 条生效。`precedent compile <topic-id>` → `precedent confirm <id>` → "
                  "`precedent hooks install claude-code`。")
     else:
         L.append("| id | tool | action | matchers | 出生门 | 来源纠正 | 触发 |")
         L.append("|---|---|---|---|---|---|---|")
-        for r in precedents:
+        for r in active:
             birth = r.get("birth") or {}
             ms = r.get("matchers") or ([{"type": "input_regex",
                                          "regex": r.get("input_regex")}]
@@ -491,6 +496,13 @@ def render_digest(state, scan_result, mine_result, precedents: list[dict],
                      f"{birth.get('verdict', '—')} {birth.get('counts', '')} | "
                      f"{(r.get('quote') or r.get('message') or '')[:30]} | "
                      f"{fun['firesByRule'].get(r.get('id'), 0)} |")
+    if retired:
+        L.append("")
+        L.append(f"已退役 {len(retired)} 条（不再强制执行，保留在记录里）：")
+        for r in retired:
+            L.append(f"- `{r.get('id')}` {r.get('status')} — "
+                     f"{(r.get('message') or '')[:60]} "
+                     f"· 原因：{(r.get('retiredReason') or '—')[:60]}")
     L.append("")
     L.append("## 8. 支出表")
     L.append("")

@@ -26,15 +26,24 @@ into a denial-of-service against the agent it is supposed to protect::
      "quote": "后续代码修改，以及收据工具改用 Opus 5",
      "quoteDate": "2026-09-15"}
 
-Three matcher types, all on a **named input field** of ``tool_input``:
+Four matcher types, all on a **named input field** of ``tool_input``:
 
 ``input_regex``          the field's value matches ``regex``
+``input_regex_absent``   the field's value does **not** match ``regex``, *or*
+                         the field is missing — the "every call must say X"
+                         shape, where silence is as much a violation as the
+                         wrong value
 ``input_field_missing``  the field is absent / null / empty  (Agent without a
                          ``model``, Bash without a ``description``, …)
 ``input_field_equals``   the field equals ``value`` (``negate`` flips it; a
                          *missing* field never satisfies an ``equals``, and
                          never satisfies a negated one either — use
                          ``input_field_missing`` for that, explicitly)
+
+``input_regex_absent`` inverts the *answer*, never the *failure mode*: when a
+pattern has been quarantined the matcher does not fire, exactly as
+``input_regex`` does not fire.  Inverting a "we could not evaluate this" into a
+denial would turn one slow regex into a gate that blocks every call.
 
 Templates (:func:`build_rule`) are the supported ways to get one:
 
@@ -43,6 +52,7 @@ Templates (:func:`build_rule`) are the supported ways to get one:
 ``use_x_not_y``         "use X not Y"            -> regex on ``command`` for Y
 ``dont_touch_path``     "don't touch P"          -> regex on ``file_path``
 ``require_field``       "Agent calls must set model=opus"
+``require_regex``       "Workflow scripts must contain model:'opus'"
 ``forbid_flag``         "never pass --force to git push"
 ``ask_before``          "ask me first" -> action=ask (rm -rf, curl|sh, push -f)
 ======================  =======================================================
@@ -94,6 +104,7 @@ __all__ = [
     "TOOL_FIELDS",
     "bounded_search",
     "build_rule",
+    "search_evaluated",
     "quarantined",
     "reset_quarantine",
     "default_field",
@@ -114,10 +125,11 @@ TOOLS = ("Bash", "Edit", "Write", "MultiEdit", "NotebookEdit", "Agent",
 
 ACTIONS = ("deny", "ask", "log")
 SCOPES = ("project", "global")
-MATCHER_TYPES = ("input_regex", "input_field_missing", "input_field_equals")
+MATCHER_TYPES = ("input_regex", "input_regex_absent", "input_field_missing",
+                 "input_field_equals")
 
 TEMPLATES = ("dont_use", "use_x_not_y", "dont_touch_path", "require_field",
-             "forbid_flag", "ask_before")
+             "require_regex", "forbid_flag", "ask_before")
 
 #: The named input fields each tool carries, most characteristic first.  The
 #: first entry is the default field a regex matcher binds to.
@@ -412,6 +424,53 @@ def lint_regex(pattern: str) -> list[str]:
     return problems
 
 
+def search_evaluated(rx: re.Pattern, subject: str,
+                     budget_ms: float = DEFAULT_BUDGET_MS) -> tuple:
+    """``(match, evaluated)`` — the search, and whether it actually happened.
+
+    ``evaluated`` is ``False`` when the pattern was skipped (quarantined, or the
+    subject is not usable text).  It exists because ``None`` is ambiguous the
+    moment a matcher *inverts* the answer: for :data:`input_regex` "no match"
+    and "not evaluated" both mean *do not fire*, but for
+    ``input_regex_absent`` "no match" means *fire* — so without this flag one
+    quarantined pattern would flip from a gate that misses into a gate that
+    denies everything.  Callers must fail open on ``evaluated is False``.
+
+    **Truncation is the third way not to know.**  The subject is capped at
+    :data:`MAX_SUBJECT_CHARS`, so "no match" in a capped subject means "no match
+    in the first 4 KB", which is not the same claim.  For ``input_regex`` that
+    only loses a hit (fail open, as designed); for ``input_regex_absent`` it
+    *invents* a violation and denies a compliant call.  Measured, not imagined:
+    a real ``Workflow`` call carrying ``model: 'opus'`` at offset 5,778 of a
+    19,739-character script was flagged by exactly this path.  A match found
+    inside the cap is still definitive — truncation only makes the *negative*
+    unsafe — so only that case reports ``evaluated=False``.
+    """
+    if not isinstance(subject, str) or not subject:
+        return None, False
+    full_len = len(subject)
+    subject = subject[:MAX_SUBJECT_CHARS]
+    truncated = full_len > len(subject)
+    key = rx.pattern
+    if key in _SLOW:
+        SLOW_EVENTS.append({"pattern": key[:120], "ms": None,
+                            "subjectChars": len(subject), "quarantined": True})
+        return None, False
+    t0 = time.monotonic()
+    out = rx.search(subject)
+    ms = (time.monotonic() - t0) * 1000
+    if ms > budget_ms:
+        _SLOW.add(key)
+        SLOW_EVENTS.append({"pattern": key[:120], "ms": round(ms, 3),
+                            "subjectChars": len(subject), "quarantined": False})
+    if out is None and truncated:
+        SLOW_EVENTS.append({"pattern": key[:120], "ms": None,
+                            "subjectChars": len(subject), "truncated": full_len,
+                            "quarantined": False})
+        return None, False
+    return out, True
+
+
 def bounded_search(rx: re.Pattern, subject: str, budget_ms: float = DEFAULT_BUDGET_MS):
     """``rx.search(subject)`` with a length cap and a time budget.
 
@@ -420,22 +479,7 @@ def bounded_search(rx: re.Pattern, subject: str, budget_ms: float = DEFAULT_BUDG
     misses (fail-open).  Every overrun is appended to :data:`SLOW_EVENTS` and
     disables that pattern for the rest of the process.
     """
-    if not isinstance(subject, str) or not subject:
-        return None
-    subject = subject[:MAX_SUBJECT_CHARS]
-    key = rx.pattern
-    if key in _SLOW:
-        SLOW_EVENTS.append({"pattern": key[:120], "ms": None,
-                            "subjectChars": len(subject), "quarantined": True})
-        return None
-    t0 = time.monotonic()
-    out = rx.search(subject)
-    ms = (time.monotonic() - t0) * 1000
-    if ms > budget_ms:
-        _SLOW.add(key)
-        SLOW_EVENTS.append({"pattern": key[:120], "ms": round(ms, 3),
-                            "subjectChars": len(subject), "quarantined": False})
-    return out
+    return search_evaluated(rx, subject, budget_ms)[0]
 
 
 def quarantined() -> list[str]:
@@ -530,7 +574,7 @@ def _check_matcher(m, i: int) -> dict:
     if len(field) > 64 or not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_.]*", field):
         raise RuleError(f"matchers[{i}].field {field!r} is not an input field name")
     out = {"type": mtype, "field": field}
-    if mtype == "input_regex":
+    if mtype in ("input_regex", "input_regex_absent"):
         rx = m.get("regex")
         if not isinstance(rx, str) or not rx:
             raise RuleError(f"matchers[{i}].regex must be a non-empty string")
@@ -618,7 +662,7 @@ def validate_rule(rule: dict, *, require_id: bool = False) -> dict:
     if cwd_glob:
         clean["cwd_glob"] = cwd_glob
     for key in ("quote", "quoteDate", "template", "topic", "topics", "x", "y",
-                "path", "field", "value", "flag", "origin", "rationale"):
+                "path", "field", "value", "flag", "regex", "origin", "rationale"):
         if r.get(key) not in (None, ""):
             clean[key] = r[key]
     rid = r.get("id")
@@ -664,14 +708,20 @@ def _matcher_fires(m: dict, tool_input, budget_ms: float) -> bool:
         else:
             eq = value.lower() == str(want).lower()
         return (not eq) if m.get("negate") else eq
-    if mtype == "input_regex":
+    if mtype in ("input_regex", "input_regex_absent"):
+        absent = mtype == "input_regex_absent"
         if value is None:
-            return False
+            # a field that is not there cannot match: that is a violation of
+            # "must match", and a non-event for "must not contain"
+            return absent
         try:
             rx = re.compile(m["regex"])
         except (KeyError, re.error):
             return False
-        return bounded_search(rx, value, budget_ms) is not None
+        hit, evaluated = search_evaluated(rx, value, budget_ms)
+        if not evaluated:
+            return False                # unknown -> fail open, both directions
+        return (hit is None) if absent else (hit is not None)
     return False
 
 
@@ -732,7 +782,7 @@ def build_rule(topic_id: str | list[str] | None, template: str, *,
                x: str | None = None, y: str | None = None, path: str | None = None,
                field: str | None = None, value: str | None = None,
                flag: str | None = None, preset: str | None = None,
-               command: str | None = None,
+               command: str | None = None, regex: str | None = None,
                tool: str | None = None, action: str | None = None,
                message: str | None = None, scope: str = "project",
                cwd_glob: str | None = None,
@@ -784,6 +834,24 @@ def build_rule(topic_id: str | list[str] | None, template: str, *,
         want = f"{field}={value}" if value else field
         msg = message or f"{rtool} 调用必须带 {want}"
         act = action or "deny"
+    elif template == "require_regex":
+        if not field:
+            raise RuleError("template 'require_regex' needs --field (the input "
+                            "field that must match, e.g. script)")
+        if not regex:
+            raise RuleError("template 'require_regex' needs --regex (the pattern "
+                            "the field must match)")
+        problems = lint_regex(regex)
+        if problems:
+            raise RuleError(f"--regex rejected: {'; '.join(problems)}")
+        rtool = tool or "Agent|Workflow"
+        # One matcher, not two: `input_regex_absent` already treats a missing
+        # field as a violation, so pairing it with `input_field_missing` under
+        # match=any would only add a second way to say the same thing -- and a
+        # second way to get the mode wrong.
+        matchers = [{"type": "input_regex_absent", "field": field, "regex": regex}]
+        msg = message or f"{field} must match {regex}"
+        act = action or "deny"
     elif template == "forbid_flag":
         if not flag:
             raise RuleError("template 'forbid_flag' needs --flag (e.g. --force)")
@@ -824,7 +892,7 @@ def build_rule(topic_id: str | list[str] | None, template: str, *,
     if cwd_glob:
         draft["cwd_glob"] = cwd_glob
     for k, v in (("x", x), ("y", y), ("path", path), ("field", field),
-                 ("value", value), ("flag", flag)):
+                 ("value", value), ("flag", flag), ("regex", regex)):
         if v:
             draft[k] = v
     rule = validate_rule(draft)

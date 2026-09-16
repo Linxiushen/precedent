@@ -48,6 +48,7 @@ from .improve import (DEFAULT_TOP_CLUSTERS, DEFAULT_TOTAL_BUDGET_USD, improve,
                       render_improve)
 from .loop import cron_snippet, render_cycle, run_cycle
 from .docket import (SNOOZE_DAYS, build_entries, confirm_rule, render_batch,
+                     retire_rule,
                      render_docket)
 from .docket import confirm as docket_confirm
 from .docket import reject as docket_reject
@@ -283,6 +284,7 @@ def _template_kwargs(args) -> dict:
         "value": args.value, "flag": args.flag, "preset": args.preset,
         "command": args.command_text, "tool": args.tool, "action": args.action,
         "message": args.message, "scope": args.scope, "cwd_glob": args.cwd_glob,
+        "regex": args.regex,
     }
 
 
@@ -474,7 +476,7 @@ def _render_compile(topics, rule, gate) -> str:
                          if k in rule}, ensure_ascii=False, indent=2))
     L.append("")
     bits = [f"模板 {rule.get('template', 'llm')}"]
-    for k in ("x", "y", "path", "field", "value", "flag"):
+    for k in ("x", "y", "path", "field", "value", "flag", "regex"):
         if rule.get(k):
             bits.append(f"{k}={rule[k]}")
     L.append("  ".join(bits))
@@ -496,6 +498,14 @@ def _render_compile(topics, rule, gate) -> str:
 def cmd_confirm(args) -> int:
     state = _open_state(args)
     rc, lines = confirm_rule(state, args.rule_id, force=args.force)
+    for line in lines:
+        print(line, file=sys.stderr if rc else sys.stdout)
+    return rc
+
+
+def cmd_retire(args) -> int:
+    state = _open_state(args)
+    rc, lines = retire_rule(state, args.rule_id, reason=args.reason)
     for line in lines:
         print(line, file=sys.stderr if rc else sys.stdout)
     return rc
@@ -1016,6 +1026,9 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--value", default=None,
                    help="the value that field must equal (require_field)")
     s.add_argument("--flag", default=None, help="the forbidden flag (forbid_flag)")
+    s.add_argument("--regex", default=None,
+                   help="the pattern the --field must match (require_regex); "
+                        "linted for catastrophic backtracking before it is stored")
     s.add_argument("--command", dest="command_text", default=None,
                    help="restrict forbid_flag to this command (e.g. 'git push')")
     s.add_argument("--preset", choices=tuple(ASK_BEFORE_PRESETS), default=None,
@@ -1048,6 +1061,15 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--force", action="store_true",
                    help="confirm even though the birth gate failed (discouraged)")
     s.set_defaults(func=cmd_confirm)
+
+    # retire
+    s = sub.add_parser("retire",
+                       help="stop enforcing an active precedent (keeps the record)")
+    s.add_argument("rule_id", metavar="RULE_ID", help="a `p-…` rule id")
+    _common(s)
+    s.add_argument("--reason", default=None,
+                   help="why it is being retired — it becomes a negative example")
+    s.set_defaults(func=cmd_retire)
 
     # own
     s = sub.add_parser("own", help="declare who owns a governed artifact")

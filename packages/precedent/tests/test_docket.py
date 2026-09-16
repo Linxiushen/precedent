@@ -224,3 +224,69 @@ def test_docket_json_export_drops_the_raw_record(state, tmp_path, capsys):
     payload = json.load(open(out, encoding="utf-8"))
     assert len(payload["entries"]) == 3
     assert all("raw" not in e for e in payload["entries"])
+
+
+# --------------------------------------------------------------------------
+# retire — the verb that stops enforcement
+#
+# `reject` keeps a *candidate* out of precedents.json.  Once a rule is
+# confirmed the hook reads it from precedents.json and enforces every entry
+# whose status is exactly "active", so a rejection that does not also retire
+# leaves the user being denied by a rule they just threw out.  These tests pin
+# that gap shut from both directions.
+# --------------------------------------------------------------------------
+
+def test_retire_makes_an_active_rule_inert_but_keeps_the_record(state):
+    from precedent.docket import retire_rule
+    confirm(state, "p-1a2b3c4d", now=NOW)
+    rc, lines = retire_rule(state, "p-1a2b3c4d", reason="太宽了", now=NOW)
+    assert rc == 0 and "retired" in lines[0]
+    rule = [r for r in state.precedents() if r["id"] == "p-1a2b3c4d"][0]
+    assert rule["status"] == "retired"
+    assert rule["retiredReason"] == "太宽了" and rule["retiredAt"]
+    # the rule itself survives — the funnel, the ledger and the next --llm
+    # prompt all need to know it existed
+    assert rule["matchers"] and rule["message"]
+    rows = [json.loads(l) for l in open(state.rejected_path, encoding="utf-8")]
+    assert rows[-1]["source"] == "retire" and rows[-1]["id"] == "p-1a2b3c4d"
+
+
+def test_a_retired_rule_is_not_enforced_by_the_hook(state):
+    from precedent import _hooklib
+    from precedent.docket import retire_rule
+    confirm(state, "p-1a2b3c4d", now=NOW)
+    _hooklib.configure(state.root)
+    assert [r["id"] for r in _hooklib.active_rules()] == ["p-1a2b3c4d"]
+    retire_rule(state, "p-1a2b3c4d", reason="太宽了", now=NOW)
+    _hooklib.configure(state.root)
+    assert _hooklib.active_rules() == []
+
+
+def test_rejecting_an_already_confirmed_rule_retires_it(state):
+    confirm(state, "p-1a2b3c4d", now=NOW)
+    rc, lines = reject(state, "p-1a2b3c4d", reason="其实我经常这么用", now=NOW)
+    assert rc == 0 and "retired" in lines[0]
+    rule = [r for r in state.precedents() if r["id"] == "p-1a2b3c4d"][0]
+    assert rule["status"] == "retired"
+
+
+def test_retire_is_idempotent_and_unknown_ids_are_an_error(state):
+    from precedent.docket import retire_rule
+    confirm(state, "p-1a2b3c4d", now=NOW)
+    assert retire_rule(state, "p-1a2b3c4d", now=NOW)[0] == 0
+    rc, lines = retire_rule(state, "p-1a2b3c4d", now=NOW)
+    assert rc == 0 and "already" in lines[0]
+    rc, lines = retire_rule(state, "p-nope", now=NOW)
+    assert rc == 2 and "no precedent" in lines[0]
+
+
+def test_retire_through_the_cli_and_the_report_does_not_count_it(state, capsys):
+    confirm(state, "p-1a2b3c4d", now=NOW)
+    rc = main(["retire", "p-1a2b3c4d", "--reason", "太宽",
+               "--state-dir", state.root, "--claude-home", state.claude_home])
+    out = capsys.readouterr().out
+    assert rc == 0 and "retired" in out
+    rc = main(["report", "--state-dir", state.root,
+               "--claude-home", state.claude_home])
+    out = capsys.readouterr().out
+    assert "已退役 1 条" in out

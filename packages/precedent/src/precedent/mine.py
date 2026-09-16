@@ -51,6 +51,8 @@ from dataclasses import dataclass, field
 from receipts.transcripts import (SessionData, find_sessions, iter_records,
                                   load_session)
 
+from .scrub import scrub
+
 __all__ = [
     "Correction",
     "HumanTurn",
@@ -183,7 +185,11 @@ class HumanTurn:
         return f"{os.path.basename(self.transcript)}:{self.line_no}"
 
     def quote(self, limit: int = MAX_QUOTE_CHARS) -> str:
-        t = " ".join(self.text.split())
+        # scrubbed here, at the source: every quote the miner, the gate, the
+        # reports and the JSON output show is built from this method, so a
+        # secret masked once is masked everywhere downstream (see
+        # :mod:`precedent.scrub`)
+        t = scrub(" ".join(self.text.split()))
         return t if len(t) <= limit else t[:limit] + "…"
 
 
@@ -196,7 +202,7 @@ def _tool_summary(name: str, inp: dict) -> str:
                 "url", "query"):
         v = inp.get(key)
         if isinstance(v, str) and v.strip():
-            s = " ".join(v.split())
+            s = scrub(" ".join(v.split()))
             return s if len(s) <= MAX_TOOL_SUMMARY_CHARS else s[:MAX_TOOL_SUMMARY_CHARS] + "…"
     keys = ",".join(sorted(k for k in inp if isinstance(k, str))[:4])
     return f"({keys})" if keys else ""
@@ -409,7 +415,7 @@ def analyse_text(text: str) -> TextAnalysis:
         if not hits:
             continue
         if is_question(sent) and not has_imperative(sent):
-            rejected.append({"sentence": sent[:120], "reason": "question",
+            rejected.append({"sentence": scrub(sent)[:120], "reason": "question",
                              "patterns": [p for p, _ in hits]})
             continue
         base = max(w for _, w in hits)
@@ -552,7 +558,8 @@ class RevertAction:
 
     def to_dict(self) -> dict:
         return {"sessionId": self.session_id, "lineNo": self.line_no, "ts": self.ts,
-                "command": self.command[:160], "revertedPaths": self.reverted_paths[:5],
+                "command": scrub(self.command)[:160],
+                "revertedPaths": [scrub(p) for p in self.reverted_paths[:5]],
                 "undoesAgentEdit": self.undoes_agent_edit,
                 "locator": f"{os.path.basename(self.source)}:{self.line_no}"}
 
@@ -637,8 +644,8 @@ class Correction:
         return round(min(1.0, c), 3)
 
     def quote(self, limit: int = MAX_QUOTE_CHARS) -> str:
-        """The *sentence* the user corrected with, not the whole turn."""
-        s = " ".join((self.sentence or self.turn.text).split())
+        """The *sentence* the user corrected with, not the whole turn (scrubbed)."""
+        s = scrub(" ".join((self.sentence or self.turn.text).split()))
         return s if len(s) <= limit else s[:limit] + "…"
 
     def to_dict(self) -> dict:
@@ -715,14 +722,14 @@ class Topic:
         from .compile import suggest_check          # local import: avoids a cycle
         d = {
             "id": self.id,
-            "label": self.label,
+            "label": scrub(self.label),
             "count": self.count,
             "sessions": self.sessions,
             "nSessions": len(self.sessions),
             "repeated": self.repeated,
             "t0": self.t0,
             "maxConfidence": max((c.confidence for c in self.members), default=0.0),
-            "topTokens": self.top_tokens(),
+            "topTokens": [scrub(tok) for tok in self.top_tokens()],
             "quotes": [c.quote() for c in self.members[:5]],
             "corrections": [c.to_dict() for c in self.members],
             "precedingTools": [{k: v for k, v in t.items() if k != "input"}
@@ -755,7 +762,7 @@ def _group(corrections: list[Correction], similarity: float) -> list[Topic]:
             topics.append(Topic(id="", members=[c]))
     for t in topics:
         t.id = _topic_id(t.members[0])
-        t.label = " ".join(t.top_tokens(5)) or t.members[0].quote(40)
+        t.label = scrub(" ".join(t.top_tokens(5))) or t.members[0].quote(40)
     return topics
 
 

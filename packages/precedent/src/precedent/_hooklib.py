@@ -44,8 +44,8 @@ __all__ = [
     "DECIDING_EVENTS", "GOVERNED_KINDS", "SCHEMA_VERSION", "agent_of", "classify_path", "configure",
     "decide", "diff_summary", "guard_main", "handle_instructions_loaded",
     "handle_post_tool_use", "handle_pre_tool_use", "handle_session_start",
-    "handle_stop", "handle_user_prompt_submit", "owner_of", "snapshot_file",
-    "write_targets",
+    "handle_stop", "handle_user_prompt_submit", "owner_of", "search_evaluated",
+    "snapshot_file", "write_targets",
 ]
 
 SCHEMA_VERSION = 1
@@ -630,25 +630,47 @@ def field_value(tool_input, field):
 _SLOW = set()
 
 
-def bounded_search(rx, subject):
-    """``rx.search`` under a length cap, a time budget and a quarantine.
+def search_evaluated(rx, subject):
+    """``(match, evaluated)`` under a length cap, a time budget and a quarantine.
 
     CPython's ``re`` holds the GIL and ignores signals mid-match, so this is
     reject-then-quarantine, not a hard deadline: patterns are linted before they
     are ever stored, the subject is capped, and one overrun disables the pattern
     for the rest of this process (fail-open).
+
+    ``evaluated`` is False when the pattern was skipped.  ``input_regex_absent``
+    inverts the answer, so it must be able to tell "did not match" from "was not
+    asked": inverting the second one would turn one quarantined pattern into a
+    hook that denies every call.
+
+    Truncation counts as "was not asked" in the negative direction only: the
+    subject is capped at :data:`MAX_SUBJECT`, so a miss in a capped subject is
+    "not in the first 4 KB", and inverting *that* denies a compliant call — a
+    real ``Workflow`` script carried its ``model: 'opus'`` at offset 5,778 of
+    19,739 characters.  A hit inside the cap is still a hit.
     """
+    full_len = len(subject)
     subject = subject[:MAX_SUBJECT]
+    truncated = full_len > len(subject)
     if rx.pattern in _SLOW:
         log({"event": "regex_quarantined", "pattern": rx.pattern[:120]})
-        return None
+        return None, False
     t0 = time.time()
     out = rx.search(subject)
     ms = (time.time() - t0) * 1000
     if ms > BUDGET_MS:
         _SLOW.add(rx.pattern)
         log({"event": "regex_slow", "pattern": rx.pattern[:120], "ms": round(ms, 2)})
-    return out
+    if out is None and truncated:
+        log({"event": "regex_truncated", "pattern": rx.pattern[:120],
+             "subjectChars": len(subject), "fullChars": full_len})
+        return None, False
+    return out, True
+
+
+def bounded_search(rx, subject):
+    """``rx.search`` under a length cap, a time budget and a quarantine."""
+    return search_evaluated(rx, subject)[0]
 
 
 def matcher_fires(m, tool_input):
@@ -668,14 +690,18 @@ def matcher_fires(m, tool_input):
         else:
             eq = value.lower() == str(want).lower()
         return (not eq) if m.get("negate") else eq
-    if mtype == "input_regex":
+    if mtype in ("input_regex", "input_regex_absent"):
+        absent = mtype == "input_regex_absent"
         if value is None:
-            return False
+            return absent           # missing cannot match a "must match" rule
         try:
             rx = re.compile(m["regex"])
         except Exception:
             return False
-        return bounded_search(rx, value) is not None
+        hit, evaluated = search_evaluated(rx, value)
+        if not evaluated:
+            return False            # unknown -> fail open, in both directions
+        return (hit is None) if absent else (hit is not None)
     return False
 
 

@@ -39,12 +39,13 @@ jobs:
         package: [receipts, acceptor, precedent]
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v5
+        uses: astral-sh/setup-uv@v6
         with:
           enable-cache: true
+          cache-dependency-glob: "packages/*/pyproject.toml"
 
       - name: Create the venv
         run: uv venv --python ${{ matrix.python }} packages/${{ matrix.package }}/.venv
@@ -81,10 +82,11 @@ jobs:
     name: optional extras degrade gracefully
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v5
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v6
         with:
           enable-cache: true
+          cache-dependency-glob: "packages/*/pyproject.toml"
 
       - name: Install precedent WITH the [zh] extra
         run: |
@@ -102,10 +104,11 @@ jobs:
     name: wheels build and the CLI runs from them
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v5
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v6
         with:
           enable-cache: true
+          cache-dependency-glob: "packages/*/pyproject.toml"
 
       - name: Build all three wheels and sdists
         run: |

@@ -28,8 +28,65 @@ def fires(rule, tool, inp, cwd=None):
 
 def test_every_template_is_covered_by_this_file():
     covered = {"dont_use", "use_x_not_y", "dont_touch_path", "require_field",
-               "forbid_flag", "ask_before"}
+               "require_regex", "forbid_flag", "ask_before"}
     assert covered == set(TEMPLATES)
+
+
+# --------------------------------------------------------------------------
+# require_regex / input_regex_absent — "every call must SAY something"
+#
+# The inverted matcher is the one place where "did not match" and "was not
+# evaluated" must not be the same answer, so each of the three states gets its
+# own test: match -> quiet, no match -> fires, missing field -> fires,
+# quarantined pattern -> quiet (fail open, never deny-everything).
+# --------------------------------------------------------------------------
+
+def test_template_require_regex_fires_when_the_field_does_not_match():
+    r = build_rule("t-x", "require_regex", tool="Workflow", field="script",
+                   regex=r"model:\s*['\"]opus['\"]")
+    assert r["tool"] == "Workflow" and r["action"] == "deny"
+    assert r["matchers"][0]["type"] == "input_regex_absent"
+    # says it -> quiet, in either quote style
+    assert not fires(r, "Workflow", {"script": "agent(p, {model:'opus'})"})
+    assert not fires(r, "Workflow", {"script": 'agent(p, {model: "opus"})'})
+    # does not say it -> fires
+    assert fires(r, "Workflow", {"script": "agent(p, {model:'sonnet'})"})
+    assert fires(r, "Workflow", {"script": "agent(p, {})"})
+
+
+def test_require_regex_fires_on_a_missing_field():
+    # silence is the violation this template exists for: a Workflow call with
+    # no `script` at all has certainly not pinned the model
+    r = build_rule("t-x", "require_regex", tool="Workflow", field="script",
+                   regex=r"model:\s*['\"]opus['\"]")
+    assert fires(r, "Workflow", {})
+    assert fires(r, "Workflow", {"script": ""})
+
+
+def test_require_regex_fails_open_when_its_pattern_is_quarantined(monkeypatch):
+    import precedent.rules as rules_mod
+    r = build_rule("t-x", "require_regex", tool="Workflow", field="script",
+                   regex=r"model:\s*['\"]opus['\"]")
+    pattern = r["matchers"][0]["regex"]
+    monkeypatch.setattr(rules_mod, "_SLOW", {pattern})
+    # a quarantined pattern must NOT be read as "the field failed to match":
+    # inverting "we could not evaluate this" would deny every Workflow call
+    assert not fires(r, "Workflow", {"script": "agent(p, {model:'sonnet'})"})
+    assert not fires(r, "Workflow", {"script": "agent(p, {model:'opus'})"})
+
+
+def test_require_regex_needs_both_field_and_regex():
+    with pytest.raises(RuleError):
+        build_rule("t-x", "require_regex", tool="Workflow", field="script")
+    with pytest.raises(RuleError):
+        build_rule("t-x", "require_regex", tool="Workflow",
+                   regex=r"model:\s*'opus'")
+
+
+def test_require_regex_refuses_a_catastrophic_pattern():
+    with pytest.raises(RuleError):
+        build_rule("t-x", "require_regex", tool="Workflow", field="script",
+                   regex=r"(a*)*b")
 
 
 def test_template_dont_use():
@@ -304,3 +361,33 @@ def test_the_same_matchers_scoped_differently_are_different_rules():
     b = build_rule("t", "dont_use", x="pip", cwd_glob="/repo/beta/**")
     c = build_rule("t", "dont_use", x="pip")
     assert len({a["id"], b["id"], c["id"]}) == 3
+
+
+def test_require_regex_does_not_deny_when_the_match_is_past_the_subject_cap():
+    """Measured on real data: a compliant call was flagged because of the cap.
+
+    A ``Workflow`` script of 19,739 characters carried ``model: 'opus'`` at
+    offset 5,778 — past ``MAX_SUBJECT_CHARS``.  The regex never saw it, the
+    inverted matcher read "no match" as "violation", and the gate would have
+    denied a call that did exactly what the user asked for.  Truncation is a
+    third way of not knowing, and an inverted matcher must fail open on it.
+    """
+    from precedent.rules import MAX_SUBJECT_CHARS
+    r = build_rule("t-x", "require_regex", tool="Workflow", field="script",
+                   regex=r"model:\s*['\"]opus['\"]")
+    late = "x" * (MAX_SUBJECT_CHARS + 500) + " agent(p, {model: 'opus'})"
+    assert not fires(r, "Workflow", {"script": late})
+    # and the compliance it cannot see does not become permission either: a
+    # positive inside the cap is still definitive
+    early = "agent(p, {model: 'opus'}) " + "x" * (MAX_SUBJECT_CHARS + 500)
+    assert not fires(r, "Workflow", {"script": early})
+    # a short script that really is non-compliant still fires
+    assert fires(r, "Workflow", {"script": "agent(p, {model: 'sonnet'})"})
+
+
+def test_a_positive_matcher_is_unchanged_by_the_truncation_rule():
+    from precedent.rules import MAX_SUBJECT_CHARS
+    r = build_rule("t-x", "dont_use", x="headless")
+    assert fires(r, "Bash", {"command": "chrome --headless"})
+    # past the cap it misses, exactly as before — fail open in the safe direction
+    assert not fires(r, "Bash", {"command": "x" * (MAX_SUBJECT_CHARS + 10) + " headless"})

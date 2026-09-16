@@ -310,6 +310,27 @@ def tree_fingerprint(root: str) -> dict[str, str]:
     return out
 
 
+@pytest.fixture(autouse=True)
+def stub_claude_binary(tmp_path, monkeypatch):
+    """Pin ``PRECEDENT_CLAUDE_BIN`` so the suite never consults the host's PATH.
+
+    Several tests exercise the ``claude -p`` code paths with ``subprocess.run``
+    stubbed or with an injected runner.  Those tests never *execute* the binary
+    — but argv construction still goes through :func:`precedent.llm.claude_bin`,
+    which raises :class:`LLMUnavailable` when no ``claude`` is on PATH.  That
+    made the outcome depend on whether the machine running the tests happens to
+    have Claude Code installed: green on a developer laptop, ten failures on a
+    CI runner.  A suite whose result depends on the host is not a suite.
+
+    So every test starts with the variable pointing at a path under ``tmp_path``
+    that is deliberately *not* created: argv gets a stable, obviously-fake name
+    and anything that really tried to exec it would fail loudly.  The handful of
+    tests that assert the missing-binary error delete the variable themselves
+    (``monkeypatch.delenv``), and the ones that want a working shim overwrite it.
+    """
+    monkeypatch.setenv("PRECEDENT_CLAUDE_BIN", str(tmp_path / "no-such-claude"))
+
+
 @pytest.fixture
 def real_home_canary():
     """Records the state of the user's real ``~/.claude`` and ``~/.precedent``.

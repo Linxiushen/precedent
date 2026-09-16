@@ -1843,6 +1843,23 @@ All five steps, **$0.00**, no model call, no byte written under `~/.claude`.
 
 ## 6 · USER RUNBOOK — closing the loop live
 
+> **Amended 2026-09-16.** The rule this runbook enforces changed after §5 was
+> written, and the change is the point rather than an erratum. `p-036f5125`
+> (deny `headless` **everywhere**) passed the gate at 0.4% but the full-corpus
+> sweep in §4i priced it honestly: **68 interruptions** across 17,842 recorded
+> calls, every one a headless browser launched in a project where you never
+> complained. It has been **retired** (`precedent retire`, kept in the record,
+> fed back as a negative example) and replaced by `p-0e66c266` — the same rule
+> scoped with `--cwd-glob` to the project where you actually said it:
+>
+> ```
+> (a) 命中违规动作 1/3 → HIT
+> (b) t0 之后可判定 140 次动作 · 触发 0 · 误触率 0/140 = 0.0% (阈值 2%)
+> 判定 **PASS**
+> ```
+>
+> Same correction, same template, one scope flag: 68 interruptions → 0.
+
 Three commands. You run them; nothing above touched your `settings.json`.
 
 ```bash
@@ -1854,23 +1871,34 @@ export PATH="<repo>/packages/precedent/.venv/bin:$PATH"
 #     the diff.
 precedent hooks install claude-code --apply --i-know
 
-# 2 — violate, headless, in a throwaway directory.  p-036f5125 denies any Bash
-#     command containing the word "headless".  --allowed-tools is there so the
-#     run does not stall on a permission prompt instead; the deny you want to
-#     see comes from the hook, and it names a precedent id.
+# 2 — violate, headless, INSIDE the project the rule is scoped to.  p-0e66c266
+#     denies a Bash command containing "headless" only under
+#     "…/Microduck 机器鸭二开"; the cwd is part of the match, so this is the one
+#     directory where the deny fires.  --allowed-tools is there so the run does
+#     not stall on a permission prompt instead: the deny you want to see comes
+#     from the hook, and it names a precedent id.
+cd "/Users/leonskennedy/AI coding open/Microduck 机器鸭二开" \
+  && claude -p 'Use the Bash tool to run exactly this command and show me its output: echo "precedent headless smoke test"' \
+    --model haiku --max-budget-usd 0.10 --no-session-persistence \
+    --allowed-tools 'Bash(echo:*)' --output-format json
+
+# 2b — the same command from anywhere else is ALLOWED.  Scope is not decoration:
+#      this is the 68 interruptions the retired rule would have cost you.
 cd /tmp && claude -p 'Use the Bash tool to run exactly this command and show me its output: echo "precedent headless smoke test"' \
     --model haiku --max-budget-usd 0.10 --no-session-persistence \
     --allowed-tools 'Bash(echo:*)' --output-format json
 
 # 3 — audit.  The funnel's ③ activated and ④ attributed both go to 1, the
 #     NOT_INSTALLED alarm clears, and the hook log carries the deny with its
-#     rule id and your own words.
+#     rule id and your own words.  Retired rules are listed separately and are
+#     never counted as enforced.
 precedent report
 ```
 
 What to look for in step 2: the model is handed
-`[precedent p-036f5125] 不要使用 headless — 你在 2026-09-07 说：…` instead of a
-shell. What to look for in step 3:
+`[precedent p-0e66c266] 不要使用 headless — 你在 2026-09-07 说：…` instead of a
+shell. In step 2b it gets the shell, and `hooklog.jsonl` records an `allow`.
+What to look for in step 3:
 
 ```
 | 阶段 | 数量 |
@@ -1879,7 +1907,7 @@ shell. What to look for in step 3:
 ```
 
 and in `~/.precedent/hooklog.jsonl`, a line
-`{"event": "deny", "rule": "p-036f5125", …}`.
+`{"event": "deny", "rule": "p-0e66c266", …}`.
 
 ### Undo — one line
 
@@ -1895,16 +1923,24 @@ was before the install. Anything else in your `hooks` block survives.
 If you only want the headless rule gone and the receipts/ownership hooks kept:
 
 ```bash
-precedent docket reject p-036f5125 --reason "太宽了，别的项目我确实要用无头浏览器"
+precedent retire p-0e66c266 --reason "这个项目我现在也要用无头浏览器了"
 precedent hooks install claude-code --apply --i-know      # re-merge without it
 ```
 
-Or tighten it instead of dropping it — recompile scoped to the project where you
-meant it, and re-run the gate:
+`retire` is the verb that matters once a rule is *confirmed*: `docket reject`
+alone keeps a candidate out of `precedents.json`, but the hook reads
+`precedents.json` and enforces everything whose `status` is `"active"`, so a
+confirmed rule has to be retired or it goes on denying you. (`docket reject` on
+a confirmed rule now retires it for exactly that reason.) The rule is kept, not
+deleted: the funnel, the ledger and the next `compile --llm` prompt all need to
+know it existed and why it stopped.
+
+This is how `p-036f5125` (the unscoped version) was withdrawn; tightening the
+scope instead of dropping the rule is one flag:
 
 ```bash
 precedent compile t-307dca53 --template dont_use --x headless \
-    --cwd-glob '/Users/leonskennedy/AI coding open/Microduck 机器鸭二开/**'
+    --cwd-glob '/Users/leonskennedy/AI coding open/Microduck*'
 ```
 
 Backups, newest last:
@@ -2197,3 +2233,56 @@ Two of the nine exist because writing this dossier found two real defects:
   calls) plus $0.0040 for the one haiku call in control 2. Everything else —
   `init`, `mine`, three `compile`s, `confirm`, `report`, `loop --dry-run`, the
   dry runs, the whole of §4 — was free and offline.
+
+---
+
+## 9 · Amendment, 2026-09-16 — what changed after the dossier was written
+
+Four things, each of them found by the machinery itself rather than by reading
+the code.
+
+**1. The unscoped headless rule was retired, the scoped one confirmed.**
+§4i priced `p-036f5125` at 68 interruptions across 17,842 recorded calls. That
+is not a gate, it is a tax. Retired (kept, with its reason, as a negative
+example) and replaced by `p-0e66c266` — identical template, one `--cwd-glob`,
+gate PASS at **0/140** tolerated fires. The active set is now exactly one rule.
+
+**2. `precedent retire` exists, and `docket reject` on a confirmed rule calls
+it.** Rejecting a *candidate* keeps it out of `precedents.json`; rejecting a
+*confirmed* rule did nothing to the hook, which reads `precedents.json` and
+enforces every `status: "active"` entry. A user who threw a rule out would have
+gone on being denied by it. Four regression tests pin it shut, including one
+that asserts `_hooklib.active_rules()` goes empty after a retire.
+
+**3. A real fail-closed bug in the inverted matcher, found by the gate.**
+`require_regex` / `input_regex_absent` (“every Workflow call must pin
+`model: 'opus'`”) was compiled against the real corpus and the gate reported
+**4/4 = 100% tolerated fires** — implausible, because two of those four calls
+demonstrably *did* carry `model: 'opus'`. They carried it at offsets 5,778 and
+5,659 of scripts 19,739 and 16,714 characters long, past the 4,096-character
+subject cap. The regex never saw it; “no match” became “violation”; the rule
+would have **denied compliant calls**.
+
+Truncation is a third way of not knowing, alongside a quarantined pattern and a
+non-text subject, and the inverted matcher must fail open on all three. Fixed in
+both `rules.py` and the hook's own `_hooklib.py`, logged as `regex_truncated`,
+and pinned by tests. Re-run after the fix: **4/4 → 1/4**. The gate did not just
+refuse a bad rule — its refusal was the bug report.
+
+**4. The opus rule still does not pass, and that is the honest answer.**
+Three scopings, three verdicts:
+
+| scope | (a) HIT | (b) quiet-after | verdict |
+|---|---|---|---|
+| `Agent\|Workflow`, `require_field model=opus` | 1/3 | 4/8 = 50% | FAIL — `Workflow` has no `model` input field at all |
+| `Workflow.script` must match `model:\s*['"]opus['"]`, all projects | 1/3 | 1/4 = 25% | FAIL — one call in another project genuinely did not pin it |
+| same, `--cwd-glob` this project | 1/3 | **0/2 = 0%** | **INSUFFICIENT** — right shape, the gate needs ≥3 post-t0 actions |
+
+“Use Opus for subagents” is a *preemptive* policy: the user stated it, and the
+agent complied, so there is almost no recorded violation to bind the rule to.
+The gate v1 is built to certify rules against what actually happened, so it
+declines — and says which of the two clauses failed, and how far it is from
+enough evidence. The candidate stays in `candidates.json` and becomes
+compilable the moment the tool is used a third time in this project.
+
+Test totals after the amendment: **receipts 71 · acceptor 112 · precedent 639**.

@@ -39,8 +39,8 @@ from .state import now_iso
 
 __all__ = [
     "SNOOZE_DAYS", "STARVATION_DAYS", "build_entries", "confirm", "confirm_rule",
-    "read_decisions", "reject", "render_batch", "render_docket", "snooze",
-    "starving",
+    "read_decisions", "reject", "render_batch", "render_docket", "retire_rule",
+    "snooze", "starving",
 ]
 
 SNOOZE_DAYS = 14
@@ -321,6 +321,58 @@ def confirm_rule(state, rule_id: str, force: bool = False,
     ]
 
 
+def retire_rule(state, rule_id: str, reason: str | None = None,
+                now: datetime | None = None) -> tuple[int, list[str]]:
+    """An **active** precedent stops being enforced.  Returns (rc, lines).
+
+    Rejecting a rule that is still only a *candidate* is enough to keep it out
+    of ``precedents.json``.  Rejecting one that has already been confirmed is
+    not: the hook reads ``precedents.json`` and enforces every entry whose
+    ``status`` is exactly ``"active"``, so a rule the user has just thrown out
+    would go on denying their tool calls until someone noticed.  Retiring is
+    the verb that closes that gap — and it *retires*, never deletes, because
+    the funnel, the ledger and the next ``compile --llm`` prompt all need to
+    know the rule existed and why it stopped.
+    """
+    now = now or datetime.now(timezone.utc)
+    rules = state.precedents()
+    match = [r for r in rules if r.get("id") == rule_id]
+    if not match:
+        return 2, [f"precedent: no precedent {rule_id!r} in {state.precedents_path}",
+                   "  (a compiled candidate that was never confirmed is "
+                   "`precedent docket reject <id>`)"]
+    rule = match[-1]
+    if rule.get("status") != "active":
+        return 0, [f"precedent: {rule_id} is already {rule.get('status')!r} — "
+                   f"nothing to do (idempotent)."]
+    rule["status"] = "retired"
+    rule["retiredAt"] = now_iso(now)
+    rule["retiredReason"] = reason or "(none given)"
+    state.write_precedents(rules, now=now)
+    _certify(state, rule_id, "REJECT",
+             {"kind": "rule", "was": "active", "reason": rule["retiredReason"],
+              "gate": (rule.get("birth") or {}).get("verdict")},
+             note=f"user retired an enforced rule: {rule['retiredReason'][:120]}",
+             now=now)
+    state.ledger().append_event(rule_id, "retired",
+                                {"reason": rule["retiredReason"],
+                                 "message": rule.get("message", "")[:120]})
+    _record(state, rule_id, "rejected", reason=reason, now=now)
+    _append_rejected(state, {
+        "id": rule_id, "at": now_iso(now),
+        "reason": reason or "user retired an enforced rule",
+        "rule": {k: v for k, v in rule.items() if k != "birth"},
+        "source": "retire"})
+    return 0, [
+        f"precedent: retired {rule_id} — it is no longer enforced",
+        f"  {rule.get('message', '')[:100]}",
+        f"  the hook only ever reads status == \"active\"; re-run "
+        f"`precedent hooks install claude-code` to drop its matcher from "
+        f"settings.json too (the rule itself is already inert).",
+        f"  它会作为反例进入下一次 `compile --llm` 的提示词 ({state.rejected_path})",
+    ]
+
+
 def _find(state, entry_id: str, now: datetime) -> dict | None:
     for e in build_entries(state, now=now, include_decided=True):
         if e["id"] == entry_id:
@@ -355,6 +407,12 @@ def confirm(state, entry_id: str, force: bool = False,
 def reject(state, entry_id: str, reason: str | None = None,
            now: datetime | None = None) -> tuple[int, list[str]]:
     now = now or datetime.now(timezone.utc)
+    # A rule that is already being enforced needs more than a docket note: the
+    # hook reads precedents.json, not the docket, so rejecting it has to retire
+    # it as well or the user goes on being denied by a rule they just threw out.
+    if any(r.get("id") == entry_id and r.get("status") == "active"
+           for r in state.precedents()):
+        return retire_rule(state, entry_id, reason=reason, now=now)
     entry = _find(state, entry_id, now)
     if entry is None:
         return 2, [f"precedent: no docket entry {entry_id!r}"]

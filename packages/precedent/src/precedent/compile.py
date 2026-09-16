@@ -48,6 +48,7 @@ from dataclasses import dataclass, field
 from receipts.transcripts import parse_ts
 
 from .mine import MAX_PRECEDING_TOOLS
+from .scrub import scrub
 from .rules import (ASK_BEFORE_PRESETS, TEMPLATES, RuleError, build_rule,
                     default_field, normalise_rule, rule_fires, scope_matches,
                     tool_matches, validate_rule)
@@ -469,8 +470,10 @@ def run_temporal_gate(rule: dict, topics, mine_result, *,
                 "tool": tc.name,
                 "locator": _locator(tc),
                 "ts": tc.ts,
-                "value": (tc.input.get("command") or tc.input.get("file_path")
-                          or tc.input.get("prompt") or "")[:120]
+                # raw tool input, so it goes through the DLP scrub before it
+                # is stored on the candidate and printed by `compile`/`docket`
+                "value": scrub((tc.input.get("command") or tc.input.get("file_path")
+                                or tc.input.get("prompt") or ""))[:120]
                 if isinstance(tc.input, dict) else "",
             }
             if confirmed is not None:
