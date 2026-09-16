@@ -2286,3 +2286,88 @@ enough evidence. The candidate stays in `candidates.json` and becomes
 compilable the moment the tool is used a third time in this project.
 
 Test totals after the amendment: **receipts 71 · acceptor 112 · precedent 639**.
+
+---
+
+## 10 · LIVE — the loop closed on the real machine, 2026-09-16
+
+The user authorised the install. This section is the real thing: real
+`settings.json`, real Claude Code sessions, real deny.
+
+```
+$ shasum -a 256 ~/.claude/settings.json
+b4579f6fe9f0…                       # before
+
+$ precedent hooks install claude-code --apply --i-know
+precedent: merged into /Users/leonskennedy/.claude/settings.json
+  backup   : /Users/leonskennedy/.precedent/backups/settings-20260916T061822Z.json
+precedent: agent-created index rebuilt (9 paths) → ~/.precedent/agent_created.json
+precedent: install receipt → ~/.precedent/hooks/installed.json
+
+$ python3 -c "import json;d=json.load(open('~/.claude/settings.json'))…"
+ model= opus[1m]  effortLevel= xhigh  agentPushNotifEnabled= True      # untouched
+ hook events: [InstructionsLoaded, PostToolUse, PreToolUse, SessionStart, Stop, UserPromptSubmit]
+
+$ diff <my own pre-install copy> ~/.precedent/backups/settings-20260916T061822Z.json
+backup == pre-install state ✓
+```
+
+**The violation — inside the scoped project.** A fresh headless session, a real
+`Bash` call, a real deny:
+
+```
+$ cd "/Users/leonskennedy/AI coding open/Microduck 机器鸭二开"
+$ claude -p 'Use the Bash tool to run exactly this command …: echo "headless smoke test"' \
+    --model haiku --max-budget-usd 0.10 --no-session-persistence \
+    --allowed-tools 'Bash(echo:*)' --output-format json
+
+RESULT: Your hook blocked this command — there's a precedent from 2026-09-07
+        where you mentioned avoiding headless browsers for performance reasons.
+        The hook is set to reject commands containing "headless".
+denials: [{'tool_name': 'Bash', 'tool_input': {'command': 'echo "headless smoke test"'}}]
+cost: $0.025
+```
+
+The model was handed the user's own sentence from nine days earlier, and stopped.
+
+**The same command from `/tmp` — allowed.** Scope is not decoration; this is the
+68 interruptions the retired unscoped rule would have cost:
+
+```
+RESULT: The output is:  headless smoke test
+denials: []
+```
+
+**The hook log, verbatim:**
+
+```json
+{"event": "deny", "hook": "PreToolUse", "rule": "p-0e66c266", "ms": 0.48,
+ "session": "21ffac79-8ee6-41db-809e-43d12dd20b21", "ts": "2026-09-16T06:18:58Z"}
+```
+
+0.48 ms. Six hook invocations across both sessions, one fire (17%).
+
+**④ audit — the funnel is no longer theoretical:**
+
+| 阶段 | 数量 | 含义 |
+|---|---|---|
+| ① proposed | 8 | rule candidates 7 + proposals 1 |
+| ② accepted | 1 | passed the gate and confirmed by the user |
+| ③ activated | 1 | actually inside the PreToolUse matcher in settings.json |
+| ④ attributed | 1 | actually fired, in the hook log |
+
+Retired rules are listed separately and counted as enforced nowhere:
+`p-036f5125 retired — 全局 deny 会在其他项目打断 68 次合法的无头浏览器使用`.
+
+**⑤ re-evolve:** `rejected.jsonl` now carries 3 negative examples — two
+schema-rejected LLM drafts and the retired rule with the reason it was
+withdrawn. They go into the next `compile --llm` prompt.
+
+Spend for the whole live demo: **$0.05** (two haiku sessions). Cumulative
+`claude -p` spend across every stage: **$0.16**.
+
+### Uninstall, one line
+
+```bash
+precedent hooks uninstall claude-code --apply --i-know
+```
