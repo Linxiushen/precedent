@@ -50,3 +50,6 @@ backups/
 *.swp
 *.swo
 Thumbs.db
+
+# Node (plugins/openclaw)
+node_modules/

@@ -142,6 +142,8 @@ precedent examine --candidate <p|id>  # cassettes -> two-armed exam -> certifica
 precedent improve --budget-usd 2      # NIGHTLY: failure clusters -> bounded edits
 precedent loop --dry-run              # one whole cycle, zero model calls
 precedent loop --cron                 # the launchd/crontab snippet (prints only)
+precedent evaluate-bundle --stdin --json   # OpenClaw skill bundle in, verdict out
+precedent evaluate-bundle --dir ./skill --baseline-dir ~/.claude/skills/x
 ```
 
 All of them take `--claude-home` and `--state-dir`; the scan-backed ones also
@@ -754,6 +756,60 @@ and plans `restore` / `recreate` / `delete` / `unchanged` / `blocked` per file,
 flagging any file a *later* session also wrote (`CONFLICT:` — restoring would
 discard that work too). Dry-run by default.
 
+### `precedent evaluate-bundle` — the OpenClaw bundle gate
+
+The Python core an OpenClaw plugin shells out to from its
+`skill_proposal_evaluate` hook. **Event JSON in on stdin, result JSON out on
+stdout, nothing else on stdout ever** — the TypeScript shim parses it blind, so
+every diagnostic goes to stderr. That is enforced rather than intended: the
+whole evaluation runs with `sys.stdout` redirected to `sys.stderr`, so a stray
+`print` inside a check — or a check that tries to write `{"decision": "pass"}`
+itself — lands where diagnostics belong instead of splicing itself into the
+document the shim parses. The only write to the real stdout is the finished
+document.
+
+```bash
+precedent evaluate-bundle --stdin --json < event.json     # what the plugin runs
+precedent evaluate-bundle --dir ./candidate-skill         # …or a directory
+precedent evaluate-bundle --dir ./new --baseline-dir ./current   # an update
+```
+
+Seven deterministic check families — regex, sha256, `compile()` and set
+algebra, **no model call and no network** — each finding carrying a stable
+`ruleId` a plugin can count, suppress or allowlist:
+
+| family | what it proves | the CRITICAL member |
+|---|---|---|
+| `structure/*` | every `files[].path` stays inside the bundle, SKILL.md parses, `name`+`description` are declared, the name matches the proposal, referenced files are *in the bundle*, shebanged scripts compile (`compile()` / `bash -n`), base64 decodes, no invisible or bidi characters, nothing was silently truncated | a path that escapes the bundle (`../../etc/cron.d/evil` — applying it is an arbitrary file write, and what the file *contains* is beside the point), an explicit bidi override (the line reviewed is not the line that runs), or a `sha256` / `treeSha256` that does not recompute — **what you were asked to grade is not what you were handed** |
+| `dlp/*` | `precedent.scrub` over every text file, and over the *logical* lines too, so a credential split across a shell line continuation cannot hide in the seam. The match is **never** echoed: kind + file + line, and that is all | a credential (`sk-…`, `ghp_…`, `xox…`, `AKIA…`) |
+| `evidence/*` | a line claiming *verified / tested / 已确认* has to cite a command, a path or a date | a placeholder (`NNN`, `HH:MM`, `TODO`, `<your-…>`, `xxx`) inside such a line — hermes#89963, where template text was codified as "Verified 2026-08-04" |
+| `scope/*` | absolute home paths, `localhost:PORT`, machine hostnames and dates-as-facts in a skill that never says where it applies | — |
+| `baseline/*` | **the SafeEvolve rule**, updates only: a revision may not silently DROP a verification or reversibility requirement its ancestor asserted — nor *reformat* it away, which is why a replacement has to share two content tokens with what it replaces and not merely one. Each dropped requirement is listed individually | every one of them |
+| `risk/*` | updates only: destructive verbs, egress hosts and credential reads the baseline did not have | a new egress host **combined** with a new credential read or destructive verb — the shape of exfiltration |
+| `size/*` | SKILL.md over 25 KiB, bundle over 1 MiB — retrieval precision collapses as the pool grows | — |
+
+Any `critical` → `block`; else any `warn` → `revise`; else `pass`.
+
+**Fail-closed, and that is the whole point.** OpenClaw records a thrown error or
+a timeout as an *attributed error outcome* — it does **not** block. Only a
+completed `decision: "block"` vetoes an apply, so an evaluator that crashes has
+silently stopped being a gate. `evaluate_event` therefore converts every
+internal failure — a malformed event, a check that raises, a snapshot that does
+not decode — into a valid result document with `decision: "block"` and a
+`decisionReason` naming the exception, and the CLI exits **0** whenever it
+managed to write a document: `pass`, `revise` and `block` alike. The decision
+lives in the document, never in the exit status. `--no-fail-closed` lets the
+exception out, for debugging only.
+
+Calibration, measured on the 44 real skills in `~/.claude/skills` on this
+machine (copied read-only into a tmp dir): **16 `pass`, 28 `revise`, 0
+`block`** — zero false criticals on a working corpus, and the rules added by
+the adversarial pass (`unsafe-path`, `bidi-override`, `invisible-character`,
+`duplicate-path`, `file-truncated`) fire **zero** times across its 825 files. A
+gate that vetoes real work gets switched off, so `tests/test_bundle.py` asserts
+that property and `tests/test_bundle_adversarial.py` asserts each new rule is
+silent on an ordinary skill as well as loud on the attack.
+
 ## Layout
 
 ```
@@ -788,6 +844,9 @@ src/precedent/
   audit.py     the funnel, the four STARVATION alarms, the spend meter, daily
   snapshot.py  content-addressed snapshots, undo planning and application
   report.py    the 10-line first screen, the mine report, the daily digest
+  bundle.py    THE OPENCLAW BUNDLE GATE: BundleSnapshot decoding and digest
+               recomputation, the seven check families, requirement extraction
+               and the replacement test, the risk delta, fail-closed grading
   cli.py       argparse wiring
 ```
 
@@ -824,6 +883,27 @@ src/precedent/
   revert — that cost four false positives on this machine before it was fixed)
   and matches only at command positions. A revert performed outside Claude Code
   is invisible.
+* **The bundle evaluator's `treeSha256` has no wire-format specification.**
+  The seam documents the field, not its encoding. Per-file `sha256` is
+  unambiguous and is enforced exactly; the tree digest is recomputed in the
+  three canonical shapes a sane producer would use and only reported when
+  *none* agrees. A content change moves all three, so tamper detection holds —
+  but a producer using a fourth encoding would get a false `critical`, which is
+  the direction this gate is allowed to be wrong in.
+* **A secret can still be assembled out of pieces the scrub cannot see.** A
+  credential split across a shell line continuation is caught, because the
+  logical line is scanned too; one built by string concatenation
+  (`"sk-" + tail`) or read out of a variable is not, and a deterministic
+  checker cannot chase arbitrary string algebra. The DLP pass is a net for
+  shapes, not a proof of absence.
+* **`evaluate-bundle` is lexical, like everything else here.** It extracts
+  requirements phrased as sentences; an obligation that lives only in a diagram
+  or a table header is invisible to it. `dlp/*` inherits `scrub`'s
+  conservatism — it will call a 32-character digest an opaque blob — and its
+  Chinese claim detection deliberately matches only the *completed* forms
+  (`已确认`, `确认过`), because bare `确认` is an instruction far more often
+  than a claim and treating it as one made every command table in a real skill
+  a critical finding.
 * **The gate is retrospective, not predictive.** It proves the rule fires where
   it should and is quiet where it should *on the record you already have*,
   after the moment you stated the policy. It does not prove generalisation, and

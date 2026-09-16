@@ -304,6 +304,7 @@ precedent/
 ├── packages/precedent/   the CLI and the loop          (precedent-cli 0.1.0)
 ├── packages/receipts/    L0: did it actually load?     (receipts 0.1.0)
 ├── packages/acceptor/    L3: the acceptance statistics (acceptor 0.2.0)
+├── plugins/openclaw/     the OpenClaw plugin           (@precedent/openclaw 0.1.0)
 ├── research/             the 4-day evidence base — see research/README.md
 ├── scripts/dev.sh        three uv venvs + all three suites
 └── 方案.md               the full design document (Chinese)
@@ -328,6 +329,44 @@ import**), `hooks.py` (rendering, backup, merge, drift), `examine.py` (the
 examiner), `accept.py` (the gate wiring), `improve.py` (the nightly improver),
 `loop.py` (one cycle), `audit.py` / `report.py` (the digest). Each package's
 own README is the detailed reference.
+
+---
+
+## OpenClaw
+
+The same gate, pointed at somebody else's proposer.
+
+[`plugins/openclaw/`](plugins/openclaw) is an OpenClaw plugin that registers
+`skill_proposal_evaluate` and grades every Skill Workshop draft before it is
+applied — structure and digests, a secret scan, uncited verification claims,
+machine-scope leakage, safety requirements the revision quietly dropped, risk
+deltas against the baseline, and size. Offline, deterministic, ~70 ms. The
+grading is `precedent evaluate-bundle`; the plugin is the seam.
+
+It exists because of one fact about the host, and the fact inverts the intuition
+you have about every other check you have written:
+
+> On a thrown error or a hook timeout OpenClaw records an **attributed error
+> outcome — it does not block.** Only a completed `decision: "block"` vetoes an
+> apply. **So an evaluator that throws is an evaluator that silently approves**,
+> and it approves precisely when it is broken.
+
+So the plugin never throws. A missing CLI, a crash, a timeout, garbage on
+stdout, an oversized bundle, a bug in the plugin itself — each becomes an
+explicit `decision: "block"` (configurable to `revise`) whose `decisionReason`
+names the failure *and* the fix. `failClosed` governs only the plugin's own
+failures; a block the core earned from a finding blocks either way.
+
+```bash
+pipx install precedent-cli                        # the grader
+openclaw plugins install ./plugins/openclaw       # the seam
+cd plugins/openclaw && npm install && npm test    # 94 tests, all across a real process boundary
+```
+
+Calibrated on the 44 skills installed on the author's machine: 16 `pass`,
+28 `revise`, **0 `block`**, zero false criticals. See
+[plugins/openclaw/README.md](plugins/openclaw/README.md) for the configuration,
+the two-timeouts design, and a worked example of a blocked proposal.
 
 ---
 
@@ -442,6 +481,11 @@ Each package is independent and uv-managed on Python 3.12; `precedent`'s venv
 has `receipts` and `acceptor` installed editable. Tests:
 `cd packages/<pkg> && .venv/bin/python -m pytest -q`. CI runs all three suites
 on Python 3.11 and 3.12.
+
+The one non-Python component is [`plugins/openclaw/`](plugins/openclaw), an npm
+package with no runtime dependencies: `cd plugins/openclaw && npm install &&
+npm test` type-checks it and runs 94 tests (Node 22.18+, which strips types
+natively — there is no build step).
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for the rules that matter (stdlib only;
 never touch a real `~/.claude` in a test; every safety invariant needs a test
@@ -585,6 +629,26 @@ precedent hooks uninstall claude-code --apply --i-know # 只删我们自己写�
 **测试**全部跑在 `tmp_path` 下的合成 Claude home 上，并有 `real_home_canary` 夹具：
 真实 `~/.claude` / `~/.precedent` 一旦被碰过，测试就失败。
 
+## OpenClaw 插件
+
+同一个门，接到别人的提案器上。
+
+[`plugins/openclaw/`](plugins/openclaw) 注册 `skill_proposal_evaluate`，在
+Skill Workshop 草稿被应用之前做确定性评审：结构与摘要校验、密钥扫描、无证据的
+"已验证"断言、机器本地路径泄漏、修订悄悄丢掉的安全要求、相对基线的风险增量、体积。
+离线、确定性、约 70 ms。
+
+之所以必须**失败即拒绝**，是因为宿主的一个事实：**抛异常或超时会被 OpenClaw 记为
+一次归因错误，而不会拦截**——只有真正返回 `decision: "block"` 才能否决应用。
+所以**一个会抛异常的评审器，就是一个会悄悄放行的评审器**，而且恰好在它坏掉的时候
+放行。因此插件永远不抛异常：CLI 缺失、崩溃、超时、stdout 不是 JSON、包过大、插件
+自身的 bug，全部转成显式的 `block`，并在 `decisionReason` 里写清是哪种失败、怎么修。
+
+在本机 44 个真实 skill 上标定：16 `pass`、28 `revise`、**0 `block`**，零误报
+critical。详见 [plugins/openclaw/README.md](plugins/openclaw/README.md)。
+
+---
+
 ## 诚实的限制
 
 - 纠正靠**表层模式**识别，不过模型：没用到词表里任何词的纠正会被漏掉，只是引用了这些
@@ -616,6 +680,7 @@ precedent hooks uninstall claude-code --apply --i-know # 只删我们自己写�
 packages/precedent/   CLI 与闭环        （precedent-cli 0.1.0）
 packages/receipts/    L0：到底加载了没有 （receipts 0.1.0）
 packages/acceptor/    L3：接受的统计学   （acceptor 0.2.0）
+plugins/openclaw/     OpenClaw 插件      （@precedent/openclaw 0.1.0）
 research/             四天调研的原始证据（见 research/README.md）
 scripts/dev.sh        三个 uv venv + 三套测试
 方案.md               完整设计文档

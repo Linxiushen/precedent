@@ -19,6 +19,8 @@
     precedent snapshot                   content-addressed learned-state snapshot
     precedent undo --session <id>        restore what one session wrote (dry-run)
     precedent report                     the daily digest: alarms, funnel, spend
+    precedent evaluate-bundle --stdin    grade an OpenClaw skill bundle (JSON in,
+                                         the evaluator's result JSON out)
 
 Every command that could reach the Claude home is read-only or defaults to
 ``--dry-run``.  ``hooks install/uninstall --apply`` is the only command that may
@@ -29,6 +31,7 @@ dir; the user's real ``~/.claude`` additionally needs ``--i-know``.
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
 import os
 import sys
@@ -39,6 +42,8 @@ from acceptor import Certificate
 from . import __version__
 from .accept import (DEFAULT_ALPHA0, DEFAULT_HARM_ALPHA, AcceptanceResult,
                      accept_outcomes, render_acceptance, verify_acceptance)
+from .bundle import (BundleError, evaluate_event, event_from_dirs, load_event,
+                     render_human)
 from .compile import (DEFAULT_EPSILON, FOLLOW_UP_TURNS, MIN_ELIGIBLE_AFTER,
                       TEMPLATES, CompileError, auto_compile, compile_topics,
                       run_temporal_gate)
@@ -961,6 +966,70 @@ def cmd_report(args) -> int:
     return 0
 
 
+def cmd_evaluate_bundle(args) -> int:
+    """The OpenClaw ``skill_proposal_evaluate`` core.
+
+    Three rules, all of them load-bearing for the TypeScript shim that parses
+    this blind:
+
+    1. **stdout carries the result document and nothing else** — every
+       diagnostic goes to stderr;
+    2. **the exit status is 0 whenever a document was written**, ``pass``,
+       ``revise`` and ``block`` alike.  The decision lives in the document; a
+       non-zero exit would leave the caller guessing which failure it was;
+    3. **fail-closed by default** — an internal exception becomes a valid
+       document with ``decision: "block"``, because OpenClaw treats a thrown
+       error as an attributed error outcome and applies the proposal anyway.
+
+    Rule 1 is enforced rather than merely intended: the whole evaluation runs
+    with ``sys.stdout`` redirected to ``sys.stderr``, so a ``print`` inside a
+    check — or inside anything a check imports — lands where diagnostics belong
+    instead of splicing itself into the document the shim parses.  The only
+    write to the real stdout is :func:`_emit_bundle`, after the grading is over.
+    """
+    fail_closed = not getattr(args, "no_fail_closed", False)
+    doc = _grade(args, fail_closed)
+    _emit_bundle(args, doc)
+    return 0
+
+
+def _grade(args, fail_closed: bool) -> dict:
+    """Load and grade, with stdout pointed at stderr for the duration."""
+    with contextlib.redirect_stdout(sys.stderr):
+        try:
+            if args.dir:
+                event = event_from_dirs(
+                    args.dir, args.baseline_dir,
+                    skill_name=getattr(args, "skill_name", None))
+            else:
+                event = load_event(sys.stdin)
+        except Exception as exc:                          # noqa: BLE001
+            if not fail_closed:
+                raise
+            # A malformed input is still an answer: refuse, on stdout, in the
+            # shape the caller can parse.
+            event = {"__loadError__": f"{type(exc).__name__}: {exc}"}
+
+            def _fail(_ctx, _exc=exc):
+                raise BundleError(f"the event could not be loaded: "
+                                  f"{type(_exc).__name__}: {_exc}")
+
+            return evaluate_event(event, fail_closed=True,
+                                  checks=[("input", _fail)])
+        return evaluate_event(event, fail_closed=fail_closed)
+
+
+def _emit_bundle(args, doc: dict) -> None:
+    """Write the result document to stdout — compact for the shim, indented for
+    a human — and the human rendering to stderr."""
+    if getattr(args, "json_out", False):
+        sys.stdout.write(json.dumps(doc, ensure_ascii=False) + "\n")
+    else:
+        sys.stdout.write(json.dumps(doc, ensure_ascii=False, indent=2) + "\n")
+        sys.stderr.write(render_human(doc))
+    sys.stdout.flush()
+
+
 # --------------------------------------------------------------------------
 # parser
 # --------------------------------------------------------------------------
@@ -1297,6 +1366,38 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--similarity", type=float, default=DEFAULT_SIMILARITY)
     s.add_argument("--quiet", action="store_true")
     s.set_defaults(func=cmd_report)
+
+    # evaluate-bundle  (the OpenClaw skill_proposal_evaluate core)
+    s = sub.add_parser("evaluate-bundle",
+                       help="grade an OpenClaw skill bundle: the event JSON in, "
+                            "the evaluator result JSON out (stdout is JSON and "
+                            "only JSON)")
+    s.add_argument("--stdin", action="store_true",
+                   help="read the skill_proposal_evaluate event from stdin "
+                        "(the default when --dir is not given)")
+    s.add_argument("--dir", default=None, metavar="PATH",
+                   help="grade a bundle directory instead of an event: the tree "
+                        "is read (read-only) into a BundleSnapshot")
+    s.add_argument("--baseline-dir", dest="baseline_dir", default=None,
+                   metavar="PATH",
+                   help="the current skill, making it an update proposal and "
+                        "turning on the baseline-invariant and risk-delta checks")
+    s.add_argument("--skill-name", dest="skill_name", default=None, metavar="NAME",
+                   help="the skill name --dir should claim (default: the "
+                        "directory's basename)")
+    s.add_argument("--json", dest="json_out", action="store_true",
+                   help="emit the document as one compact line (what the plugin "
+                        "shim uses); without it the JSON is indented and a human "
+                        "rendering goes to stderr")
+    s.add_argument("--fail-closed", dest="fail_closed", action="store_true",
+                   default=True,
+                   help="an internal exception becomes decision=block (the "
+                        "default; OpenClaw does NOT block on a thrown error)")
+    s.add_argument("--no-fail-closed", dest="no_fail_closed", action="store_true",
+                   help="let an internal exception out, for debugging; the "
+                        "caller then sees a traceback on stderr and a non-zero "
+                        "exit instead of a verdict")
+    s.set_defaults(func=cmd_evaluate_bundle)
     return p
 
 
@@ -1313,5 +1414,10 @@ def main(argv: list[str] | None = None) -> int:
         print(f"precedent: {exc}", file=sys.stderr)
         return 2
     except SettingsUnreadable as exc:
+        print(f"precedent: {exc}", file=sys.stderr)
+        return 2
+    except BundleError as exc:
+        # Only reachable with `evaluate-bundle --no-fail-closed`: with the
+        # default the refusal is a result document on stdout, not an exit code.
         print(f"precedent: {exc}", file=sys.stderr)
         return 2

@@ -1,0 +1,15 @@
+@precedent/openclaw
+Copyright 2026 The Precedent authors
+
+This product includes software developed as part of the "自进化 Agent Harness"
+project (plugins/openclaw), distributed under the Apache License, Version 2.0.
+
+It is the OpenClaw plugin half of the Precedent bundle gate. The grading itself
+is done by the Python core in packages/precedent (`precedent evaluate-bundle`);
+this package only carries the event across the process boundary and converts
+every failure of that crossing into an explicit decision.
+
+It has no runtime dependencies. `vendor/openclaw-stub` is a development-only
+stand-in for the host's `openclaw/plugin-sdk/plugin-entry` module, so that this
+package type-checks and tests standalone; it is never published and never
+loaded inside a real OpenClaw, which supplies the real module.

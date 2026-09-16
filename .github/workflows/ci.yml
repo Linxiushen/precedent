@@ -78,6 +78,40 @@ jobs:
           done
           echo "no Claude home was created by the suite."
 
+  plugin:
+    name: the OpenClaw plugin (node)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22.x"
+          cache: npm
+          cache-dependency-path: plugins/openclaw/package-lock.json
+
+      - name: Install (the only dependencies are typescript and @types/node)
+        working-directory: plugins/openclaw
+        run: npm ci
+
+      - name: tsc --noEmit, then both test suites
+        working-directory: plugins/openclaw
+        # The suites spawn a real child process on a PATH containing only a
+        # fixture, so nothing here needs the precedent CLI; the two tests that
+        # do want it skip themselves when the repo venv is absent.
+        run: npm test
+
+      - name: Assert the plugin suite touched no real Claude home
+        run: |
+          set -euo pipefail
+          for d in "$HOME/.claude" "$HOME/.precedent"; do
+            if [ -e "$d" ]; then
+              echo "::error::a test created or wrote $d"
+              exit 1
+            fi
+          done
+          echo "no Claude home was created by the plugin suite."
+
   extras:
     name: optional extras degrade gracefully
     runs-on: ubuntu-latest

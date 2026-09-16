@@ -1,0 +1,60 @@
+{
+  "id": "precedent",
+  "name": "Precedent",
+  "description": "Evidence-gated evaluation of Skill Workshop drafts: every skill proposal is graded by a deterministic offline checker (integrity digests, secret scan, uncited-verification claims, machine-scope leakage, dropped safety requirements, risk deltas, size) before it is applied. Fail-closed by default.",
+  "license": "Apache-2.0",
+  "categories": ["security", "quality"],
+  "activation": { "onStartup": true },
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "enabled": {
+        "type": "boolean",
+        "default": true,
+        "title": "Enabled",
+        "description": "Grade skill proposals. When false the evaluator stays registered but returns `pass` without spawning anything, so its absence is visible in the proposal record instead of silent."
+      },
+      "pythonBin": {
+        "type": "string",
+        "default": "python3",
+        "title": "Python interpreter",
+        "description": "Fallback interpreter, used as `<pythonBin> -m precedent` when `precedentBin` is not on PATH. Point it at a virtualenv's python (…/.venv/bin/python) if precedent is installed there rather than globally."
+      },
+      "precedentBin": {
+        "type": "string",
+        "default": "precedent",
+        "title": "Precedent CLI",
+        "description": "The precedent executable, resolved from PATH unless an absolute path is given. Installed by `pipx install precedent-cli`."
+      },
+      "failClosed": {
+        "type": "boolean",
+        "default": true,
+        "title": "Fail closed",
+        "description": "What to do when the evaluator itself fails — missing binary, crash, timeout, unparseable output. true = block the proposal; false = downgrade to `revise`. Leave this on: OpenClaw records a thrown error or a hook timeout as an attributed error outcome and applies the proposal anyway, so an evaluator that fails open is an evaluator that silently approves. This setting never weakens a real verdict; a `block` earned by a finding blocks either way."
+      },
+      "timeoutMs": {
+        "type": "integer",
+        "default": 60000,
+        "minimum": 1000,
+        "maximum": 100000,
+        "title": "CLI timeout (ms)",
+        "description": "Hard wall-clock limit on the grading subprocess. The hook registration asks OpenClaw for this plus 15 s of headroom, so that a subprocess timeout always comes back as an explicit decision instead of losing the race to OpenClaw's own hook timeout (which does not block)."
+      },
+      "blockOn": {
+        "type": "string",
+        "enum": ["critical", "warn"],
+        "default": "critical",
+        "title": "Block on",
+        "description": "Lowest severity that vetoes an apply. `critical` (default) blocks integrity mismatches, live credentials, fabricated verification claims, dropped safety requirements and exfiltration shapes, and lets `warn` through as `revise`. `warn` is the strict setting: anything short of clean is refused."
+      },
+      "maxBundleBytes": {
+        "type": "integer",
+        "default": 2000000,
+        "minimum": 1024,
+        "title": "Max bundle bytes",
+        "description": "Refuse to grade a candidate bundle larger than this rather than paying to serialise it. The core already flags a bundle over 1 MiB as a size defect, so a bundle over this cap is pathological — usually a binary asset that does not belong in a skill."
+      }
+    }
+  }
+}

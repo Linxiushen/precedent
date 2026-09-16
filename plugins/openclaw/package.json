@@ -1,0 +1,40 @@
+{
+  "name": "@precedent/openclaw",
+  "version": "0.1.0",
+  "description": "OpenClaw plugin: evidence-gated evaluation of Skill Workshop drafts. Registers skill_proposal_evaluate and grades every proposal with the deterministic, offline precedent CLI. Fail-closed.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "main": "./index.ts",
+  "exports": {
+    ".": "./index.ts",
+    "./openclaw.plugin.json": "./openclaw.plugin.json"
+  },
+  "files": [
+    "index.ts",
+    "src/",
+    "openclaw.plugin.json",
+    "README.md",
+    "LICENSE",
+    "NOTICE"
+  ],
+  "keywords": ["openclaw", "openclaw-plugin", "skills", "governance", "security"],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Linxiushen/precedent.git",
+    "directory": "plugins/openclaw"
+  },
+  "homepage": "https://github.com/Linxiushen/precedent/tree/main/plugins/openclaw",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "npm run typecheck && node --test index.test.ts test/adversarial.test.ts",
+    "test:only": "node --test index.test.ts test/adversarial.test.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "openclaw": "file:./vendor/openclaw-stub",
+    "typescript": "^5.7.2"
+  },
+  "engines": {
+    "node": ">=22.18.0"
+  }
+}

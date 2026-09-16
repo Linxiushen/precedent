@@ -1,0 +1,14 @@
+{
+  "name": "openclaw",
+  "version": "0.0.0-precedent-dev-stub",
+  "private": true,
+  "type": "module",
+  "license": "Apache-2.0",
+  "description": "Development-only stand-in for the OpenClaw plugin SDK, so @precedent/openclaw type-checks and tests standalone. Never published; a real OpenClaw supplies the real module.",
+  "exports": {
+    "./plugin-sdk/plugin-entry": {
+      "types": "./plugin-sdk/plugin-entry.d.ts",
+      "default": "./plugin-sdk/plugin-entry.js"
+    }
+  }
+}

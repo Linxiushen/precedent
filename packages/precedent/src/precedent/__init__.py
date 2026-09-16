@@ -40,6 +40,13 @@ Five steps, and the two nobody implements are the product:
                   ``loop.py`` runs the whole cycle once (``--dry-run``) or
                   prints the schedule for it (``--cron``).
 
+Alongside the loop, ``bundle.py`` grades a **skill bundle** for an OpenClaw
+``skill_proposal_evaluate`` hook: structure, DLP, evidence discipline, scope
+leakage, the SafeEvolve baseline invariant, the risk delta and size, all
+deterministic, all fail-closed — OpenClaw does not block on a thrown error, so
+an internal failure becomes an explicit ``decision: "block"`` rather than an
+exception (``precedent evaluate-bundle``).
+
 Everything here is regex, set algebra and sha256.  Three commands can spend
 money and all three are capped, recorded and optional: ``compile --llm`` and
 ``improve`` draft with ``claude -p`` (``llm.py``), and ``examine`` runs the

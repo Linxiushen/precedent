@@ -1,0 +1,33 @@
+// Copyright 2026 The Precedent authors.
+// Licensed under the Apache License, Version 2.0 (the "License"); you may not
+// use this file except in compliance with the License. You may obtain a copy of
+// the License at http://www.apache.org/licenses/LICENSE-2.0
+// SPDX-License-Identifier: Apache-2.0
+//
+// `erasableSyntaxOnly` is the load-bearing option: it forbids the TypeScript
+// constructs that cannot be removed by type-stripping alone (enum, namespace,
+// parameter properties), so `node --test index.test.ts` runs these exact
+// sources with no build step and no transpiler in between. What the tests
+// exercise is therefore what ships.
+{
+  "compilerOptions": {
+    "target": "ES2023",
+    "lib": ["ES2023"],
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "types": ["node"],
+
+    "strict": true,
+    "noImplicitOverride": true,
+    "noFallthroughCasesInSwitch": true,
+    "forceConsistentCasingInFileNames": true,
+
+    "allowImportingTsExtensions": true,
+    "erasableSyntaxOnly": true,
+    "verbatimModuleSyntax": true,
+    "isolatedModules": true,
+    "skipLibCheck": true,
+    "noEmit": true
+  },
+  "include": ["index.ts", "index.test.ts", "src/**/*.ts", "test/**/*.ts"]
+}
