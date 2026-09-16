@@ -1,0 +1,70 @@
+# Publish to PyPI with a Trusted Publisher — no token, no secret to leak.
+#
+# One-time setup (yours, ~2 minutes, on pypi.org):
+#   https://pypi.org/manage/account/publishing/  →  "Add a new pending publisher"
+#   repeat three times, once per distribution:
+#     PyPI project name : precedent-cli | precedent-receipts | precedent-acceptor
+#     Owner             : Linxiushen
+#     Repository name   : precedent
+#     Workflow name     : release.yml
+#     Environment name  : pypi
+#
+# After that, a release is one command:
+#   git tag v0.1.0 && git push origin v0.1.0
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: build the three distributions
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          cache-dependency-glob: "packages/*/pyproject.toml"
+
+      - name: Build wheels and sdists
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          for p in receipts acceptor precedent; do
+            (cd "packages/$p" && uv build --out-dir ../../dist)
+          done
+          ls -l dist
+
+      - name: The tag must match the version it claims to release
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF_NAME#v}"
+          [ -z "$tag" ] && exit 0
+          got=$(ls dist/precedent_cli-*.whl | sed -E 's/.*precedent_cli-([0-9.]+)-.*/\1/')
+          echo "tag=$tag  precedent-cli=$got"
+          test "$tag" = "$got"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dists
+          path: dist/
+
+  publish:
+    name: publish to PyPI
+    needs: build
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write          # the OIDC token the Trusted Publisher verifies
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dists
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1
