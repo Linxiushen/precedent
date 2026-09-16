@@ -123,7 +123,7 @@ jobs:
           set -euo pipefail
           uv venv --python 3.12 .venv-dist
           uv pip install --python .venv-dist/bin/python --no-index --find-links dist \
-            precedent-cli receipts acceptor
+            precedent-cli precedent-receipts precedent-acceptor
           .venv-dist/bin/precedent --version
           .venv-dist/bin/precedent --help > /dev/null
           .venv-dist/bin/precedent hooks install claude-code --help > /dev/null
