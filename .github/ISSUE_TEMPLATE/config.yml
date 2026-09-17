@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Ask what a number means
+    url: https://github.com/Linxiushen/precedent/blob/main/paper/README.md
+    about: Every figure in the README and the paper has a command that reproduces it.
+  - name: Security — do not open an issue
+    url: https://github.com/Linxiushen/precedent/blob/main/SECURITY.md
+    about: The hooks run as you. Report privately, per SECURITY.md.

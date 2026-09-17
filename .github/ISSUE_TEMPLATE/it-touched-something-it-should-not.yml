@@ -1,0 +1,34 @@
+name: It wrote, blocked or broke something it should not have
+description: Anything that reached your Claude home, your settings, or a session that should have run.
+labels: ["safety"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Every command except `hooks install/uninstall --apply` is supposed to be
+        read-only on your Claude home, and the hooks are supposed to fail open
+        and stay under ~300 ms. If one of those did not hold, that is the most
+        serious class of bug here.
+
+        If it involves credentials or a way to make the hook approve something,
+        use [SECURITY.md](../../SECURITY.md) instead — not this form.
+  - type: dropdown
+    id: what
+    attributes:
+      label: What happened
+      options:
+        - It wrote to my Claude home when it should not have
+        - A hook blocked something no confirmed precedent covers
+        - A hook slowed down or broke a session
+        - "`undo` did not restore what it said it would"
+        - Something else
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: What you have
+      description: "Relevant lines from `~/.precedent/hooklog.jsonl`, the `settings.json` diff, or `precedent hooks status`."
+      render: text
+    validations:
+      required: true

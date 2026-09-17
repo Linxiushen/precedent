@@ -1,0 +1,36 @@
+name: The gate accepted or refused something it should not have
+description: A false commit, a false block, or a verdict whose counts look wrong.
+labels: ["gate"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        This is the report the project most wants. The gate's whole claim is
+        that its verdicts are checkable, so a verdict you disagree with is
+        either a bug or a documentation failure — both worth fixing.
+
+        **Redact first.** `precedent mine` and `precedent report` reproduce your
+        own words verbatim. `precedent audit --share` is counts-only and safe to
+        paste; the rest is not. Never paste a rule's `quote` field.
+  - type: textarea
+    id: verdict
+    attributes:
+      label: The verdict, and the counts it printed
+      description: The `出生门 / birth gate` block, or the `decision` + `metrics` from `evaluate-bundle`.
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected instead, and why
+      description: Which clause do you think is wrong — (a) HIT, (b) QUIET-AFTER, or the ε threshold?
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: "`precedent --version`, or the zipapp's sha256."
+    validations:
+      required: true

@@ -1,0 +1,39 @@
+cff-version: 1.2.0
+title: "Precedent: a self-evolving Claude Code harness with a verified self-modification loop"
+message: "If you use this software or the method, please cite it."
+type: software
+authors:
+  - alias: Linxiushen
+    website: "https://github.com/Linxiushen"
+repository-code: "https://github.com/Linxiushen/precedent"
+url: "https://github.com/Linxiushen/precedent"
+abstract: >-
+  Coding agents routinely rewrite their own memory, skills and configuration.
+  The step nobody implements is acceptance: deciding whether a self-modification
+  should be kept. Precedent turns a user's correction into a test with planted
+  ground truth — the temporal birth gate — and ships the acceptance stack around
+  it: a paired anytime-valid e-process, a per-task regression floor, an
+  evidence-gated bundle evaluator, hooks that enforce what survives, and a funnel
+  that notices when the loop has quietly stopped working. Standard library only,
+  distributed as one deterministic zipapp.
+keywords:
+  - claude-code
+  - self-improving-agents
+  - recursive-self-improvement
+  - agent-memory
+  - agent-skills
+  - ai-safety
+license: Apache-2.0
+version: 0.1.0-rc2
+date-released: "2026-09-17"
+preferred-citation:
+  type: article
+  title: "Every Correction Is a Test: Human-Anchored Criterion Evolution for Self-Modifying Agents"
+  authors:
+    - alias: Linxiushen
+      website: "https://github.com/Linxiushen"
+  year: 2026
+  url: "https://github.com/Linxiushen/precedent/blob/main/paper/every-correction-is-a-test.md"
+  notes: >-
+    Preprint in this repository; not yet submitted to a venue. The evaluation is
+    a benchmark plus a single-machine case study, not a multi-user study.
