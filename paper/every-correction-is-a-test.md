@@ -725,7 +725,7 @@ than silently.
 git clone https://github.com/Linxiushen/precedent && cd precedent
 
 ./scripts/dev.sh                     # three uv venvs + all three suites
-./scripts/dev.sh --tests             # receipts 71 · acceptor 369 · precedent 1057
+./scripts/dev.sh --tests             # receipts 71 · acceptor 369 · precedent 1060
 cd plugins/openclaw && npm test      # 94 tests across a real process boundary
 
 python3 scripts/build_zipapp.py      # one deterministic, self-contained precedent.pyz
@@ -736,7 +736,7 @@ cd packages/acceptor  && .venv/bin/python -m acceptor.bench --regime adversarial
 python3 research/tools/gate_power_sim.py
 ```
 
-**1,591 tests pass** (receipts 71, acceptor 369, precedent 1057, plugin 94), measured on
+**1,594 tests pass** (receipts 71, acceptor 369, precedent 1060, plugin 94), measured on
 2026-09-17 with the commands above. The whole test suite runs against synthetic Claude
 homes under `tmp_path` with a canary fixture that fails the test if a real home was
 touched.

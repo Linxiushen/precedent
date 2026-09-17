@@ -744,13 +744,13 @@ endorsed twice, with three hard constraints).
 ./scripts/dev.sh --demo   # build the fixture Claude home and print the card above
 ```
 
-**1,591 tests**, measured 2026-09-17 with the commands above:
+**1,594 tests**, measured 2026-09-17 with the commands above:
 
 | suite | command | count |
 |---|---|---|
 | `receipts` | `cd packages/receipts && .venv/bin/python -m pytest` | **71** |
 | `acceptor` | `cd packages/acceptor && .venv/bin/python -m pytest` | **369** |
-| `precedent` | `cd packages/precedent && .venv/bin/python -m pytest` | **1057** |
+| `precedent` | `cd packages/precedent && .venv/bin/python -m pytest` | **1060** |
 | `openclaw` | `cd plugins/openclaw && npm test` | **94** |
 
 Each package is independent and uv-managed on Python 3.12; `precedent`'s venv

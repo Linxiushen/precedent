@@ -45,6 +45,16 @@ Documentation = "https://github.com/Linxiushen/precedent/blob/main/packages/prec
 "Bug tracker" = "https://github.com/Linxiushen/precedent/issues"
 "Security policy" = "https://github.com/Linxiushen/precedent/blob/main/SECURITY.md"
 
+# Dev-only.  `precedent-cli` depends on two sibling distributions that are not
+# on PyPI yet, so a bare `uv run pytest` in this directory fails to resolve with
+# "precedent-acceptor was not found in the package registry" — which reads like
+# a broken package rather than "you are standing in a monorepo".  uv ignores
+# these when the package is consumed as a dependency; published metadata still
+# carries the plain names.
+[tool.uv.sources]
+precedent-receipts = { path = "../receipts", editable = true }
+precedent-acceptor = { path = "../acceptor", editable = true }
+
 [project.optional-dependencies]
 test = ["pytest>=7"]
 # Chinese word segmentation for the correction miner's topic grouping.

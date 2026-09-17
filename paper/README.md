@@ -47,8 +47,8 @@ a row says otherwise.
 > `pyproject.toml` already sets `addopts = "-q"`. Adding a second `-q` suppresses the
 > `N passed` summary line — run `pytest` with no extra flags to see the totals.
 
-Measured 2026-09-17: `71 passed in 2.12s`, `369 passed in 7.26s`, `1057 passed in
-51.83s`, `ℹ tests 94 / ℹ pass 94 / ℹ fail 0`.
+Measured 2026-09-17: `71 passed in 2.33s`, `369 passed in 7.44s`, `1060 passed in
+51.80s`, `ℹ tests 94 / ℹ pass 94 / ℹ fail 0`.
 
 ---
 
