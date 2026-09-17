@@ -78,15 +78,59 @@ all standard library only, so nothing is imported from site-packages and
 nothing needs to be.  If a *newer* copy of any of the three is installed on the
 interpreter running this file, the archive still wins: sys.path[0] is the
 zipapp itself.
+
+**On the interpreter.**  macOS ships ``python3`` as 3.9 and the documented
+one-liner is ``python3 precedent.pyz`` — which would fail on a stock Mac for a
+reason that has nothing to do with the user.  So when this file is started on
+an interpreter older than 3.11 it looks for a newer one on PATH and re-execs
+into it, once (``PRECEDENT_NO_REEXEC=1`` disables that, and the re-exec sets it
+so a loop is impossible).  Only if no newer interpreter exists does it explain
+what to install.
 """
 
+import os
 import sys
 
-if sys.version_info < (3, 11):                      # pragma: no cover - guard
+_MIN = (3, 11)
+
+
+def _reexec_into_a_newer_python():                  # pragma: no cover - guard
+    """Hand this archive to the newest interpreter on PATH, once."""
+    if os.environ.get("PRECEDENT_NO_REEXEC"):
+        return
+    import shutil
+    import subprocess
+    here = os.path.abspath(sys.argv[0])
+    env = dict(os.environ, PRECEDENT_NO_REEXEC="1")
+    for name in ("python3.14", "python3.13", "python3.12", "python3.11"):
+        exe = shutil.which(name)
+        if not exe:
+            continue
+        try:
+            # trust the name only after the interpreter says so itself
+            v = subprocess.run([exe, "-c", "import sys;print('%d.%d' % sys.version_info[:2])"],
+                               capture_output=True, text=True, timeout=10)
+            major, _, minor = v.stdout.strip().partition(".")
+            if v.returncode != 0 or (int(major), int(minor)) < _MIN:
+                continue
+        except Exception:
+            continue
+        sys.stderr.write("precedent.pyz: this python is %d.%d; re-running under %s\\n"
+                         % (sys.version_info[0], sys.version_info[1], exe))
+        try:
+            os.execve(exe, [exe, here, *sys.argv[1:]], env)
+        except OSError:
+            continue
+
+
+if sys.version_info < _MIN:                         # pragma: no cover - guard
+    _reexec_into_a_newer_python()                   # does not return on success
     sys.stderr.write(
-        "precedent.pyz needs Python 3.11 or newer; this is %d.%d.\\n"
-        "Install one (uv python install 3.12) and re-run, or use pipx.\\n"
-        % sys.version_info[:2])
+        "precedent.pyz needs Python %d.%d or newer; this is %d.%d, and no newer\\n"
+        "interpreter was found on PATH.\\n"
+        "  uv:   uv python install 3.12 && uv run --python 3.12 precedent.pyz ...\\n"
+        "  brew: brew install python@3.12 && python3.12 precedent.pyz ...\\n"
+        % (_MIN + sys.version_info[:2]))
     raise SystemExit(2)
 
 from precedent.cli import main                      # noqa: E402

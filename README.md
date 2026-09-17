@@ -3,7 +3,7 @@
 [![CI](https://github.com/Linxiushen/precedent/actions/workflows/ci.yml/badge.svg)](https://github.com/Linxiushen/precedent/actions/workflows/ci.yml)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%20%7C%203.12-blue.svg)](pyproject.toml)
-[![tests](https://img.shields.io/badge/tests-1591%20passing-brightgreen.svg)](#tests)
+[![tests](https://img.shields.io/badge/tests-1594%20passing-brightgreen.svg)](#tests)
 
 **Every correction is a test.**
 

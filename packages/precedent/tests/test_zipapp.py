@@ -319,3 +319,82 @@ def test_the_decoy_cannot_win_from_the_working_directory_either(pyz, decoy,
     assert p.returncode == 0, p.stderr
     assert p.stdout.strip() == "precedent 0.1.0"
     assert not os.path.exists(decoy.marker)
+
+
+# --------------------------------------------------------------------------
+# the interpreter floor — the first thing a stranger hits
+#
+# macOS ships `python3` as 3.9 and the README's one-liner is
+# `python3 precedent.pyz`.  Without a re-exec that command fails on a stock Mac
+# for a reason that has nothing to do with the user, at the only moment they
+# were ever going to try it.
+# --------------------------------------------------------------------------
+
+def _an_old_python():
+    """An interpreter on this machine older than the floor, or None."""
+    import shutil
+    for cand in ("python3.9", "python3.10", "/usr/bin/python3",
+                 "/Library/Developer/CommandLineTools/usr/bin/python3"):
+        exe = shutil.which(cand) if not os.path.isabs(cand) else (
+            cand if os.path.exists(cand) else None)
+        if not exe:
+            continue
+        v = subprocess.run([exe, "-c", "import sys;print('%d.%d' % sys.version_info[:2])"],
+                           capture_output=True, text=True)
+        if v.returncode != 0:
+            continue
+        try:
+            ver = tuple(int(x) for x in v.stdout.strip().split("."))
+        except ValueError:
+            continue
+        if ver < (3, 11):
+            return exe
+    return None
+
+
+def test_the_shim_parses_on_the_oldest_python_it_must_talk_to(pyz):
+    """3.9 must be able to COMPILE it, or the version check never runs.
+
+    A SyntaxError is raised before any guard executes, so the greeting for an
+    old interpreter has to be written in a dialect that interpreter accepts —
+    which is why the shim uses %-formatting and not a multi-line f-string.  It
+    did not, once, and a stock Mac got a zipimport traceback instead of advice.
+    """
+    import ast
+    import zipfile
+    src = zipfile.ZipFile(pyz).read("__main__.py").decode()
+    ast.parse(src)                        # SyntaxError here means 3.9 cannot start it
+    old = _an_old_python()
+    if old:
+        c = subprocess.run([old, "-c",
+                            "import ast,sys;ast.parse(sys.stdin.read())"],
+                           input=src, capture_output=True, text=True)
+        assert c.returncode == 0, c.stderr
+
+
+def test_an_old_interpreter_reexecs_into_a_newer_one(pyz):
+    """Given an old python and a newer one on PATH, it must not just give up."""
+    old = _an_old_python()
+    if not old:
+        pytest.skip("no interpreter older than the floor on this machine")
+    env = dict(os.environ)
+    env.pop("PRECEDENT_NO_REEXEC", None)
+    env["PATH"] = os.path.dirname(sys.executable) + os.pathsep + env.get("PATH", "")
+    p = subprocess.run([old, pyz, "--version"], capture_output=True, text=True,
+                       env=env, timeout=180)
+    assert p.returncode == 0, p.stderr
+    assert "precedent" in p.stdout
+    assert "re-running under" in p.stderr      # it says so rather than doing it silently
+
+
+def test_the_reexec_cannot_loop(pyz):
+    """With the escape hatch set, an old interpreter explains instead of respawning."""
+    old = _an_old_python()
+    if not old:
+        pytest.skip("no interpreter older than the floor on this machine")
+    env = dict(os.environ, PRECEDENT_NO_REEXEC="1")
+    p = subprocess.run([old, pyz, "--version"], capture_output=True, text=True,
+                       env=env, timeout=120)
+    assert p.returncode == 2
+    assert "needs Python 3.11 or newer" in p.stderr
+    assert "uv python install" in p.stderr     # a command they can copy
