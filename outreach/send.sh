@@ -36,18 +36,22 @@
 #     .../issues/155#issuecomment-5709885656
 #   NousResearch/hermes-agent#96704   SENT 2026-09-17T06:21:57Z   (was HELD)
 #     .../issues/96704#issuecomment-5709895843
-#   Human-Agent-Society/reef#357      NOT SENT — the local permission layer
-#     refused the write.  The hold reason in reef-357.md also still stands
-#     untouched: zero comments, maintainer-authored triage ticket, no
-#     invitation anywhere in the text.
+#   Human-Agent-Society/reef#357      SENT 2026-09-17T06:57:03Z   (was HELD)
+#     .../issues/357#issuecomment-5710342682
+#     The first comment on the ticket.  The hold reason in reef-357.md stands
+#     untouched — zero comments, maintainer-authored triage ticket, no
+#     invitation anywhere in the text — and was overruled deliberately.
 #
 #   microsoft/SkillOpt#174            NOT SENT — no draft exists.  The issue
 #   NousResearch/hermes-agent#95976   NOT SENT — no draft exists.  Both files
 #     are DO-NOT-SEND rationale, 0 lines of comment body between them.  There
 #     was nothing to send even had we wanted to.
 #
-# The two sends out of the HELD set were the user's call, made after reading
-# the reasons.  The reasons were not withdrawn and are still in the files.
+# Four of the six went out; three of those four were HELD.  That was the
+# user's call, made twice, after reading the reasons.  The reasons were not
+# withdrawn and are still in the files: a hold that gets edited away every
+# time it is overruled stops being a record of anything.  If one of these
+# lands badly, the file says what we knew before we sent it.
 # ---------------------------------------------------------------------------
 
 set -euo pipefail
@@ -73,7 +77,8 @@ cd "$(dirname "$0")"
 # NousResearch/hermes-agent#95976 — P1 bug awaiting a merge, not a tool.
 # NousResearch/hermes-agent#96704 — SENT 2026-09-17 on the user's instruction,
 #                                   over this hold.  Do not send again.
-# Human-Agent-Society/reef#357    — internal maintainer-authored triage ticket.
+# Human-Agent-Society/reef#357    — SENT 2026-09-17 on the user's instruction,
+#                                   over this hold.  Do not send again.
 
 # ---------------------------------------------------------------------------
 # RECOVERY
