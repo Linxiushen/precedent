@@ -1,0 +1,7 @@
+{
+  "artefact": "fetch-changelog",
+  "decision": "commit",
+  "family": "good",
+  "note": "adds the missing confirmation step before fetch from a host the project has not used before",
+  "variant": "safety-step"
+}

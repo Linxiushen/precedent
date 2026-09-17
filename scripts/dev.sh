@@ -13,6 +13,11 @@
 #   ./scripts/dev.sh --recreate  throw the venvs away and build them again
 #   ./scripts/dev.sh --clean     remove the venvs and the caches
 #   ./scripts/dev.sh --python 3.11      pin a different interpreter
+#   ./scripts/dev.sh --zipapp    build dist/precedent.pyz and prove it runs on
+#                                a Python that has none of the packages -- and
+#                                that a hostile PYTHONPATH cannot shadow it
+#   ./scripts/dev.sh --demo      build the fixture Claude home and print the
+#                                `audit --share` card that is in the README
 #
 # Each package gets its own .venv.  precedent's venv additionally has receipts
 # and acceptor installed EDITABLE, so an edit in one is visible to the other's
@@ -31,6 +36,8 @@ DO_VENVS=1
 DO_TESTS=1
 DO_CLEAN=0
 RECREATE=0
+DO_ZIPAPP=0
+DO_DEMO=0
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -38,9 +45,11 @@ while [ $# -gt 0 ]; do
     --tests)     DO_VENVS=0 ;;
     --recreate)  RECREATE=1 ;;
     --clean)     DO_CLEAN=1; DO_VENVS=0; DO_TESTS=0 ;;
+    --zipapp)    DO_ZIPAPP=1; DO_VENVS=0; DO_TESTS=0 ;;
+    --demo)      DO_DEMO=1; DO_VENVS=0; DO_TESTS=0 ;;
     --python) shift; PYVER="${1:?--python needs a version}" ;;
     -h|--help)
-      sed -n '8,21p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+      sed -n '8,25p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
       exit 0 ;;
     *) echo "dev.sh: unknown option $1 (try --help)" >&2; exit 2 ;;
   esac
@@ -61,6 +70,92 @@ if [ "$DO_CLEAN" = 1 ]; then
   done
   find "$PKGS" -name __pycache__ -type d -prune -exec rm -rf {} + 2>/dev/null || true
   echo "clean."
+  exit 0
+fi
+
+# ---------------------------------------------------------------------------
+# zipapp: one file, and a Python that has nothing installed to prove it on
+# ---------------------------------------------------------------------------
+if [ "$DO_ZIPAPP" = 1 ]; then
+  PYZ="$ROOT/dist/precedent.pyz"
+  say "building $PYZ"
+  python3 "$ROOT/scripts/build_zipapp.py" --out "$PYZ"
+  python3 "$ROOT/scripts/build_zipapp.py" --check --quiet
+  echo "  reproducible: two builds of this tree are byte-identical"
+
+  command -v uv >/dev/null 2>&1 || fail "uv is required for the bare-venv check"
+  BARE="$(mktemp -d)"
+  FIX="$BARE/claude-home"
+  trap 'rm -rf "$BARE"' EXIT
+  say "running it on a Python with NONE of the packages installed"
+  uv venv --python "$PYVER" "$BARE/venv" >/dev/null
+  "$BARE/venv/bin/python" - <<'PY'
+import importlib.util, sys
+missing = [m for m in ("receipts", "acceptor", "precedent")
+           if importlib.util.find_spec(m) is None]
+if len(missing) != 3:
+    sys.exit("this venv already has %s installed; the check would prove nothing"
+             % ", ".join(set(("receipts", "acceptor", "precedent")) - set(missing)))
+print("  site-packages has none of receipts / acceptor / precedent")
+PY
+  python3 "$ROOT/scripts/make_fixture_home.py" "$FIX" --quiet
+  "$BARE/venv/bin/python" "$PYZ" --version
+  "$BARE/venv/bin/python" "$PYZ" init --state-dir "$BARE/state" \
+      --claude-home "$FIX" >/dev/null
+  "$BARE/venv/bin/python" "$PYZ" audit --share --state-dir "$BARE/state" \
+      --claude-home "$FIX"
+
+  # ...and the other half of "self-contained": the packages are PRESENT and
+  # WRONG.  A decoy on PYTHONPATH that kills the process if it is ever imported
+  # is the only way to tell "the archive won the import" from "nothing else was
+  # there to win it".
+  say "and again with a hostile PYTHONPATH in front of it"
+  DECOY="$BARE/decoy"
+  mkdir -p "$DECOY/receipts" "$DECOY/acceptor" "$DECOY/precedent"
+  for n in receipts acceptor precedent; do
+    cat > "$DECOY/$n/__init__.py" <<EOF
+import os
+open(os.environ["DECOY_MARKER"], "a").write("$n imported\n")
+raise SystemExit("DECOY $n was imported instead of the vendored copy")
+EOF
+  done
+  cp "$DECOY/receipts/__init__.py" "$DECOY/receipts.py"
+  echo "  decoy: $DECOY  (hostile receipts.py + three hostile packages)"
+  DECOY_MARKER="$BARE/decoy-marker" PYTHONPATH="$DECOY" \
+    "$BARE/venv/bin/python" "$PYZ" audit --share --state-dir "$BARE/state2" \
+    --claude-home "$FIX" | tail -3
+  if [ -e "$BARE/decoy-marker" ]; then
+    fail "the decoy on PYTHONPATH was imported: the zipapp is NOT self-contained"
+  fi
+  echo "  the decoy was never imported; every module came out of the archive"
+  DECOY_MARKER="$BARE/decoy-marker" PYTHONPATH="$DECOY" \
+    "$BARE/venv/bin/python" -c "import sys; sys.path.insert(0, '$PYZ');
+import receipts, acceptor, precedent
+for m in (receipts, acceptor, precedent):
+    assert m.__file__.startswith('$PYZ'), m.__file__
+    print('  %-10s <- %s' % (m.__name__, m.__file__))"
+
+  echo
+  echo "precedent.pyz runs standalone."
+  exit 0
+fi
+
+# ---------------------------------------------------------------------------
+# demo: the fixture home the README's numbers come from
+# ---------------------------------------------------------------------------
+if [ "$DO_DEMO" = 1 ]; then
+  DEMO="${PRECEDENT_DEMO_DIR:-$(mktemp -d)}"
+  python3 "$ROOT/scripts/make_fixture_home.py" "$DEMO/claude-home" --force --quiet
+  PY="$PKGS/precedent/.venv/bin/python"
+  [ -x "$PY" ] || PY="python3"
+  say "precedent audit --share  (English)"
+  "$PY" -m precedent audit --share --lang en \
+      --claude-home "$DEMO/claude-home" --state-dir "$DEMO/state"
+  say "precedent audit --share --lang zh"
+  "$PY" -m precedent audit --share --lang zh \
+      --claude-home "$DEMO/claude-home" --state-dir "$DEMO/state"
+  echo
+  echo "fixture home: $DEMO/claude-home"
   exit 0
 fi
 

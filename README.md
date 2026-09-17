@@ -3,7 +3,7 @@
 [![CI](https://github.com/Linxiushen/precedent/actions/workflows/ci.yml/badge.svg)](https://github.com/Linxiushen/precedent/actions/workflows/ci.yml)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%20%7C%203.12-blue.svg)](pyproject.toml)
-[![tests](https://img.shields.io/badge/tests-828%20passing-brightgreen.svg)](#tests)
+[![tests](https://img.shields.io/badge/tests-1591%20passing-brightgreen.svg)](#tests)
 
 **Every correction is a test.**
 
@@ -53,6 +53,58 @@ candidate edit and every model upgrade is checked for free from then on.
 
 ## Install
 
+Everything here is **standard library only**, so the install is a download.
+One file, no pip, no venv, no network, no root:
+
+```bash
+curl -LO https://github.com/Linxiushen/precedent/releases/download/v0.1.0-rc1/precedent.pyz
+python3 precedent.pyz init          # read-only; prints the first screen in ~5 s
+```
+
+> **`v0.1.0-rc1` is a pre-release**, so `releases/latest/` does not point at it
+> — use the versioned URL above. It carries `precedent.pyz`, its `.sha256` and
+> the three wheels. Nothing is on PyPI: `release.yml` builds and attaches on any
+> `v*` tag and publishes to PyPI only on a tag with no `-suffix`, because a
+> release candidate is by definition the thing you might have to take back and
+> PyPI has no take-backs.
+
+`precedent.pyz` is a zipapp carrying all three packages and it runs on any
+CPython **3.11+** with nothing installed. Build your own, and check any
+download against it:
+
+```bash
+git clone https://github.com/Linxiushen/precedent && cd precedent
+python3 scripts/build_zipapp.py     # -> dist/precedent.pyz + two sha256s
+```
+
+The build is **deterministic** — entries sorted, timestamps pinned to the zip
+epoch, mode fixed at `0644` — so the same tree gives the same `sha256`, and
+`python3 scripts/build_zipapp.py --check` proves it by building twice and
+comparing.
+
+`./scripts/dev.sh --zipapp` goes further, and does the half that is usually
+skipped. Running the archive where the three packages are *absent* (a `uv venv`
+with nothing in it) shows only that it does not need them. So it then runs the
+archive again with a **decoy on `PYTHONPATH`** — a directory holding a hostile
+`receipts.py` and three hostile packages, each of which kills the process and
+leaves a marker file if it is ever imported — and prints where each module
+actually came from:
+
+```
+receipts   <- …/dist/precedent.pyz/receipts/__init__.py
+acceptor   <- …/dist/precedent.pyz/acceptor/__init__.py
+precedent  <- …/dist/precedent.pyz/precedent/__init__.py
+```
+
+That is the case that matters on a stranger's laptop: not "the packages are
+missing" but "the packages are present and wrong" — a stale `pip install`, a
+leftover `PYTHONPATH`, the directory they happen to be standing in. Both halves
+are [a CI job](.github/workflows/ci.yml) on every push and are pinned by
+`tests/test_zipapp.py`.
+
+<details>
+<summary>Prefer a package manager?</summary>
+
 ```bash
 pipx install precedent-cli          # or: uv tool install precedent-cli
 precedent --version
@@ -65,7 +117,6 @@ precedent --version
 > pip install "git+https://github.com/Linxiushen/precedent#subdirectory=packages/receipts" \
 >             "git+https://github.com/Linxiushen/precedent#subdirectory=packages/acceptor" \
 >             "git+https://github.com/Linxiushen/precedent#subdirectory=packages/precedent"
-> precedent init          # read-only; prints the first screen in ~5 s
 > ```
 >
 > Distribution names are `precedent-receipts` / `precedent-acceptor` /
@@ -73,20 +124,120 @@ precedent --version
 > (`receipts` on PyPI belongs to someone else — depending on it by that name
 > would have pulled a stranger's package.)
 
+</details>
+
 From this repository (what the three packages actually are):
 
 ```bash
-git clone <this repo> && cd precedent
 ./scripts/dev.sh                    # three uv venvs + all three test suites
 ```
 
-Python 3.11+ (3.12 recommended). **Standard library only.** The one optional
-extra is `precedent-cli[zh]`, which installs
+Python 3.11+ (3.12 recommended). Output is **English by default**; `--lang zh`
+(or a `zh_*` locale in `$LC_ALL` / `$LANG`) switches the frame to Chinese. Only
+the frame — labels, headings, summaries — is translated: your quotes, paths,
+rule bodies and matchers are the same bytes in both languages, because a report
+whose evidence moves with `$LANG` is a report you cannot check by hand.
+
+The one optional extra is `precedent-cli[zh]`, which installs
 [jieba](https://github.com/fxsjy/jieba) so Chinese topics are grouped by words
 instead of character bigrams; without it the tokeniser falls back to bigrams
 and every report says which one ran. Nothing is silently degraded.
 
 ---
+
+## `precedent audit --share` — one screen you can paste anywhere
+
+The audit most people want is not a 500-line digest. It is the five numbers
+that make you go and look at your own machine — artifacts never cited, writes
+that bypassed the tool, instruction files truncated on the way to the model,
+stale index entries, duplicate skills — in a form you can put in an issue or a
+tweet without leaking your employer's project names.
+
+```bash
+./scripts/dev.sh --demo             # builds the fixture and prints both languages
+```
+
+…or, spelled out (`python3 precedent.pyz audit …` works identically):
+
+```bash
+python3 scripts/make_fixture_home.py /tmp/demo-home   # the tree these numbers come from
+precedent audit --share --claude-home /tmp/demo-home --state-dir /tmp/demo-state
+```
+
+```
+precedent audit — share card
+────────────────────────────────────────────────────────────────────
+corpus   : 3 sessions · 2 projects · 19 learned artifacts
+           memory 14 / skill 3 / CLAUDE.md 1 / MEMORY.md 1
+
+  never cited               14 of 16 citable artifacts (88%) have never been cited or invoked
+  unattended writes         4 in 7 days — 2 bypassed the memory tool, 1 came from a subagent
+  truncated on load         1 instruction file reached the model only in part, in 1 session (s1)
+  stale index entries       1 index entry with no file on disk
+  near-duplicate artifacts  2 artifacts in 1 near-duplicate pair
+  enforcement               0 precedents active, 0 reaching the hook, 0 ever fired; 0 in the docket
+
+by project (names replaced):
+  project-A    15 artifacts · 12 never cited · 2 sessions
+  project-B    0 artifacts · 0 never cited · 1 session
+  global       4 artifacts · 2 never cited · 0 sessions
+
+alarms   : none
+────────────────────────────────────────────────────────────────────
+counts only — no quotes, no paths, no project names, no session ids.
+reproduce: precedent audit --share   ·  precedent 0.1.0
+verified : scrub + vocabulary + this machine's names: 23 checks, 2 languages, 0 leaks.
+```
+
+`--lang zh` prints the same card in Chinese; `--json` prints it for machines;
+`precedent audit` without `--share` prints the same numbers **plus** the block
+that decodes `project-A` back into a real name, for you.
+
+**The anonymisation is structural, not a filter.** The card is assembled from
+integers and three closed vocabularies — the five artifact kinds, the five
+alarm codes, and the labels the tool invents (`project-A`, `s1`) — so there is
+no free-form string in it for a redaction pass to miss. Projects are renamed in
+scan order and sessions in start order, which is why you can still see that
+twelve of the fourteen never-cited artifacts sit in one project.
+
+**And then it is checked anyway — four passes, over every rendering.** `--share`
+runs the finished card through `precedent.scrub` (the same DLP pass every quote
+takes); adds the shapes scrub deliberately allowlists elsewhere — session UUIDs,
+absolute paths, `p-…` ids, long hex runs; asserts that none of this machine's
+own strings **or their components** (the Claude home, the state dir, every
+project slug, session id, artifact path and artifact name, and each of their
+parts, so a leak of `northwind-treasury` out of
+`-Users-jdoe-src-northwind-treasury` is caught too) appears in the output; and
+then inverts the question with an **allowlist**: every word and every non-ASCII
+letter in the card must come from the ~90-word vocabulary derived from the
+string table itself. The first three passes are blocklists and blocklists fail
+quietly; the fourth is what notices a customer name in an alphabet nobody wrote
+a regex for.
+
+All four run against **every language, not the one being printed**, and against
+the exact bytes that will be printed — the same JSON serialisation, the receipt
+line included. If anything survives it **refuses to print**, names the finding
+*kind* and the offset, and exits 2 — a refusal that echoed the leak would be the
+leak. `--no-verify` skips that last step; the card is identical either way.
+
+The fixture above plants four things on purpose — a fake API key, an email, the
+project name `acme-payments` and a session id. A second, adversarial fixture
+(`make_fixture_home.py --hostile`) plants sixteen: a credential, an AWS key, two
+phone formats, an email, a WeChat id, a home path, a Unix account, a project
+*and* a skill named after a paying customer, two session uuids and a git remote
+in both syntaxes — each in a different kind of field.
+[`test_share_adversarial.py`](packages/precedent/tests/test_share_adversarial.py)
+asserts none of the sixteen reaches a card through any `--share` invocation in
+either language, first asserting they really are in the tree the card was built
+from, and then that `--verify` **refuses rather than prints** when each one is
+forced back in — including when it is forced in only in Chinese, or only into
+the JSON.
+
+```bash
+python3 scripts/make_fixture_home.py /tmp/hostile --hostile
+precedent audit --share --claude-home /tmp/hostile --state-dir /tmp/hostile-state
+cd packages/precedent && ./.venv/bin/python -m pytest tests/test_share_adversarial.py
+```
 
 ## Five-minute quickstart
 
@@ -107,18 +258,25 @@ precedent init
 ```
 
 ```
-precedent 0.1.0 — 首屏（只读，零模型调用）
- 1. Claude home     : /Users/you/.claude
- 2. 状态目录        : /Users/you/.precedent
- 3. 会话            : 扫描 8 / 发现 8 个
- 4. 学习工件        : 60 个（skill 55 / memory 3 / CLAUDE.md 2）
- 5. 从未被引用      : 41 个（可引用工件的 71%）
- 6. 曾被截断        : 1 个工件在 ≥1 个会话里只加载了一部分
- 7. 失效索引/缺文件 : 2 条
- 8. 近重复工件      : 8 个
- 9. 无人值守写入    : 最近 7 天 34 次（子代理 3 次，Bash 绕过记忆工具 31 次）
-10. 已强制执行的先例: 0 条  → 下一步：precedent mine
+precedent 0.1.0 — first screen (read-only, zero model calls)
+──────────────────────────────────────────────────────────────
+ 1. Claude home        : /Users/you/.claude
+ 2. state dir          : /Users/you/.precedent
+ 3. sessions           : 8 scanned / 8 found
+ 4. learned artifacts  : 60 (skill 55 / memory 3 / CLAUDE.md 2)
+ 5. never cited        : 41 (71% of the citable ones)
+ 6. loaded truncated   : 1 artifact loaded only in part in ≥1 session
+ 7. stale index / gone : 2
+ 8. near-duplicates    : 8
+ 9. unattended writes  : 34 in the last 7 days (subagent 3, Bash bypassing the memory tool 31)
+10. precedents enforced: 0  → next: precedent mine
+──────────────────────────────────────────────────────────────
 ```
+
+(That one is the author's own machine. For a screen you can reproduce in two
+commands, see the fixture above: `python3 scripts/make_fixture_home.py
+/tmp/demo-home && precedent init --claude-home /tmp/demo-home --state-dir
+/tmp/demo-state`. `--lang zh` prints the same ten lines in Chinese.)
 
 Every line is a count you can re-derive by hand with `grep` — each claim in the
 full report carries a `<transcript file>:<line>` locator.
@@ -305,8 +463,11 @@ precedent/
 ├── packages/receipts/    L0: did it actually load?     (receipts 0.1.0)
 ├── packages/acceptor/    L3: the acceptance statistics (acceptor 0.2.0)
 ├── plugins/openclaw/     the OpenClaw plugin           (@precedent/openclaw 0.1.0)
+├── bench/harbor/         the acceptor benchmark as Harbor tasks (17 cases)
 ├── research/             the 4-day evidence base — see research/README.md
 ├── scripts/dev.sh        three uv venvs + all three suites
+├── scripts/build_zipapp.py     one deterministic, self-contained precedent.pyz
+├── scripts/make_fixture_home.py  the synthetic Claude home the docs' numbers use
 └── 方案.md               the full design document (Chinese)
 ```
 
@@ -318,6 +479,7 @@ Layers, following [方案.md](方案.md) §3.3:
 | **L1** | snapshots, undo, path-level ownership, deterministic lint, the spend ledger | `precedent/snapshot.py`, `ownership.py`, `improve.py`, `audit.py` |
 | **L2** | **the Precedent engine**: miner → compiler → temporal birth gate → docket → enforcer → examiner | `precedent/mine.py`, `rules.py`, `compile.py`, `docket.py`, `hooks.py`, `examine.py` |
 | **L3** | the acceptance gate: paired e-process, CTHS spend schedule, harm martingale, protected-task floor, hash-chained certificates | `packages/acceptor`, wired up in `precedent/accept.py` |
+| **L3′** | **the acceptor benchmark**: labelled streams of candidate edits with planted ground truth, eleven acceptors scored and Pareto-ranked | `acceptor/streams.py`, `precedent/bench.py`, `bench/harbor/` |
 | **L4** | sealed evaluation and score receipts | partial: the proposer/evaluator separation (`--safe-mode --tools ""`), case-name binding, hash-chained receipts. Real isolation (mount namespace / container) is **not** implemented |
 | **L5** | the research track | `research/`, and the three claims C1/C2/C3 in 方案.md §3.3 |
 
@@ -370,6 +532,67 @@ the two-timeouts design, and a worked example of a blocked proposal.
 
 ---
 
+---
+
+## The acceptor benchmark — judge the gate, not the agent
+
+Everything above is a gate. This is how you find out whether a gate is any
+good, including one that is not ours.
+
+The idea it turns on: **an acceptor is a classifier over candidate edits, and
+unlike an agent its ground truth can be planted.** The cheapest case costs
+nothing at all — feed the gate edits that are byte-identical, whitespace-only,
+key-reordered or comment-only, and *every commit is a false commit by
+construction*. No human labels anything, ever.
+
+```bash
+precedent bench --all --seeds 200      # 37,400 decisions, ~2 s, zero model calls
+precedent bench --streams              # what each variant plants, and its oracle
+```
+
+Five streams over six SKILL.md-shaped artefacts, 17 variants: `null` (free
+ground truth), `regression` (a rule contradicting the artefact's own procedure,
+the "close ALL windows" over-generalisation, a placeholder codified as
+verified), `unsafe` (credential exfiltration, a destructive verb, an egress
+host, a dropped confirmation step), `tamper` (an edit that reaches the
+*evaluator*) and `good` (a defect genuinely repaired). Every planted label is
+re-verified by an oracle that shares no code with the generator before a table
+is printed.
+
+```
+acceptor              false-commit  regression  unsafe  tamper  harmful(mean)  missed-improv  evals/dec  pareto
+greedy                       47.0%        0.2%   64.9%  100.0%          55.0%           1.2%       40.0       1
+mcnemar                       2.6%        0.0%    9.5%   93.1%          34.2%          34.0%       40.0       1
+gate-mixture                  1.4%        0.0%    5.5%   79.8%          28.4%          52.2%       25.5       2
+llm-judge-yes               100.0%      100.0%  100.0%  100.0%         100.0%           0.0%        0.0       3
+regex-scan                   83.5%       83.2%   41.6%   83.4%          69.4%          16.8%        0.0       1
+evaluate-bundle             100.0%       66.7%    0.0%  100.0%          55.6%           0.0%        0.0       1
+precedent                     0.0%        0.0%    0.0%    0.0%           0.0%          52.2%        5.8       1
+```
+
+Four rows are worth the trip. **`greedy` false-commits 47.0 %** of a stream
+whose true lift is exactly zero — PACE's 30–42 %, reproduced at the artefact
+level. **`evaluate-bundle` commits 100 % of it**, and that is not a bug: our own
+OpenClaw grader answers *"is this safe to write?"*, never *"is this better?"*,
+which is precisely why an acceptance layer needs a zero-stream in front of it.
+**`tamper` is where statistics loses** — its reported lift is the largest in the
+stream because the edit moved the thing that produces the number, so every
+statistics-only row commits 71–100 % of it. And **`precedent`'s own gate is at
+0 % on all four wrong families at 5.8 paired evaluations per decision**, because
+three of its four rungs are free: a behaviour-identical candidate is a tie by
+construction, an edit that reaches the verifier surface is refused whatever it
+scores, and mechanical rejection runs before any statistics.
+
+The honest cost is in the same row: **52.2 % missed improvements**, nearly all
+of them `NSF` — the correct answer for a +0.25 lift at 40 paired binary
+outcomes. The artefacts, edits and labels are real; the paired *outcomes* are
+simulated from a declared per-family lift that the table header prints.
+
+[`bench/harbor/`](bench/harbor) ships the same 17 cases as a Harbor task family,
+in the layout read from `harbor-framework/harbor` @ `3fc050a` (2026-09-17), so
+anyone can run it through an adapter they already have. The tests execute the
+emitted `tests/test.sh` and `solution/solve.sh` for real.
+
 ## Honest limitations
 
 The long version is in each package's README. The short version:
@@ -412,6 +635,28 @@ The long version is in each package's README. The short version:
   from outside a subprocess that lies about both.
 - **Only deterministic checks exist.** Executable checks (sandboxed tests) and
   judge-based checks are specified in 方案.md and not implemented.
+- **The share card is counts-only, which is also its limit.** It cannot show
+  you *which* skill was never cited or *what* the truncated file said — for
+  that you need `precedent report`, which is a local document and quotes your
+  tree. The card is the thing you can hand to someone else, not the thing you
+  debug with.
+- **Translation covers the frame, not the whole digest.** `init`, `audit`, the
+  `mine` report and `report`'s section headings are in both languages; the
+  prose inside a few of `report`'s later sections (the spend detail and the
+  live-receipt detail) is still Chinese-only. `--lang en` does not hide that —
+  you will see the untranslated lines.
+- **The acceptor benchmark plants its own ground truth, and that cuts both
+  ways.** The artefacts, the edits and the labels are real and independently
+  re-verified, but the paired *outcomes* are simulated from a declared
+  per-family lift. precedent's 0 % on `null` is not a discovery — the family is
+  *defined* by the reference matcher and precedent's first rung uses that same
+  published matcher, so the column says "this gate implements the rung"; what
+  is worth reading is the eight rows that do not, our own `evaluate-bundle`
+  among them. And `tamper` is labelled by the same published contract (Harbor's
+  verifier layout) that the gate consults, so it measures coverage of a *known*
+  contract, not detection of an unknown attack. Closing that gap is L4 sealed
+  evaluation, which is not implemented. Six seed artefacts, written by the same
+  people who wrote the gate.
 - **One machine, one user.** Every number in these READMEs comes from the
   author's own `~/.claude` (8 sessions). Nothing here has been validated across
   users; that is C1/C2/C3 in the research track, not a claim being made today.
@@ -471,16 +716,33 @@ endorsed twice, with three hard constraints).
 
 ## Repository layout, development, contributing
 
+<a id="tests"></a>
+
 ```bash
 ./scripts/dev.sh          # create three uv venvs and run all three suites
 ./scripts/dev.sh --venvs  # only (re)create the venvs
 ./scripts/dev.sh --tests  # only run the suites
+./scripts/dev.sh --zipapp # build dist/precedent.pyz, prove it is reproducible,
+                          #   run it in a venv with nothing installed, then run
+                          #   it again with a hostile decoy on PYTHONPATH
+./scripts/dev.sh --demo   # build the fixture Claude home and print the card above
 ```
 
+**1,591 tests**, measured 2026-09-17 with the commands above:
+
+| suite | command | count |
+|---|---|---|
+| `receipts` | `cd packages/receipts && .venv/bin/python -m pytest` | **71** |
+| `acceptor` | `cd packages/acceptor && .venv/bin/python -m pytest` | **369** |
+| `precedent` | `cd packages/precedent && .venv/bin/python -m pytest` | **1057** |
+| `openclaw` | `cd plugins/openclaw && npm test` | **94** |
+
 Each package is independent and uv-managed on Python 3.12; `precedent`'s venv
-has `receipts` and `acceptor` installed editable. Tests:
-`cd packages/<pkg> && .venv/bin/python -m pytest -q`. CI runs all three suites
-on Python 3.11 and 3.12.
+has `receipts` and `acceptor` installed editable. CI runs all three suites on
+Python 3.11 and 3.12.
+
+> `pyproject.toml` already passes `-q`; adding a second `-q` hides the `N passed`
+> line, so run `pytest` with no extra flags to see a count.
 
 The one non-Python component is [`plugins/openclaw/`](plugins/openclaw), an npm
 package with no runtime dependencies: `cd plugins/openclaw && npm install &&
@@ -534,16 +796,111 @@ Precedent 是一个**自进化的 Claude Code harness**，它的核心是一个*
 
 ## 安装
 
+三个包都是**纯标准库**，所以"安装"就是一次下载。一个文件，不需要 pip、venv、
+网络或 root：
+
+```bash
+curl -LO https://github.com/Linxiushen/precedent/releases/latest/download/precedent.pyz
+python3 precedent.pyz init          # 只读，约 5 秒打印首屏
+```
+
+> **目前还没有打过 tag**，所以这个 URL 今天会 404。`release.yml` 会在第一个 `v*`
+> tag 上构建 `precedent.pyz`、验证两次构建一致、在空 venv 里跑一遍，然后连同
+> `.sha256` 一起挂到 release 上。在那之前，下面两条命令就是安装方式——它们和生成
+> release 资产的是同样两条命令。
+
+`precedent.pyz` 是一个 zipapp，里面装着三个包，在任何装了 CPython **3.11+**
+的机器上都能直接跑。你也可以自己构建并与 release 对账：
+
+```bash
+git clone https://github.com/Linxiushen/precedent && cd precedent
+python3 scripts/build_zipapp.py     # -> dist/precedent.pyz，并打印两个 sha256
+```
+
+构建是**确定性**的——条目排序、时间戳固定在 zip 纪元、权限固定 `0644`——所以
+同一棵树给出同一个 `sha256`；`--check` 会连构两次并逐字节比对来证明这一点。
+`./scripts/dev.sh --zipapp` 更进一步：构建之后在一个**什么都没装**的
+`uv venv` 里把它跑起来，这也是 CI 的一个 job。
+
+想用包管理器也可以：
+
 ```bash
 pipx install precedent-cli          # 或：uv tool install precedent-cli
 ```
 
 > **尚未发布到 PyPI。** v0.1.0 是第一个版本，包还没有上传，所以上面两条是**计划中的**
-> 安装方式，今天还不可用。在发布之前请从仓库克隆后本地安装（见下面的 `scripts/dev.sh`）。
+> 安装方式，今天还不可用。在发布之前请用上面的 zipapp，或从仓库克隆后本地安装
+>（见下面的 `scripts/dev.sh`）。
 
-Python 3.11+（建议 3.12），**纯标准库**。唯一的可选依赖是 `precedent-cli[zh]`
-（jieba），装了它中文主题按**词**分组，不装就退化成字符二元组——并且每份报告都会
-写明当前用的是哪一种，绝不静默降级。
+Python 3.11+（建议 3.12）。**输出默认是英文**；加 `--lang zh`（或 `$LC_ALL` /
+`$LANG` 是 `zh_*`）切换成中文。只有**外框**（标签、标题、汇总句）会被翻译：
+你的原话、路径、规则体和匹配器在两种语言下都是同样的字节——一份证据会随
+`$LANG` 变化的报告，是没法用手核对的报告。
+
+唯一的可选依赖是 `precedent-cli[zh]`（jieba），装了它中文主题按**词**分组，
+不装就退化成字符二元组——并且每份报告都会写明当前用的是哪一种，绝不静默降级。
+
+## `precedent audit --share` — 可以直接贴出去的一屏
+
+大多数人想要的审计不是 500 行的 digest，而是那五个"让你回头看看自己机器"的数字——
+从未被引用的工件、绕过工具的写入、在到达模型的路上被截断的指令文件、失效的索引条目、
+重复的技能——并且贴进 issue 或推文时不会泄漏雇主的项目名。
+
+```bash
+python3 scripts/make_fixture_home.py /tmp/demo-home   # 下面这些数字就来自这棵树
+precedent audit --share --lang zh --claude-home /tmp/demo-home --state-dir /tmp/demo-state
+```
+
+```
+precedent audit — 可分享卡片
+────────────────────────────────────────────────────────────────────
+语料: 3 个会话 · 2 个项目 · 19 个学习工件
+      memory 14 / skill 3 / CLAUDE.md 1 / MEMORY.md 1
+
+  从未被引用    16 个可引用工件里有 14 个（88%）从未被引用或调用
+  无人值守写入  7 天内 4 次——其中 2 次绕过记忆工具，1 次来自子代理
+  加载时被截断  1 个指令文件只有一部分到达模型，涉及 1 个会话（s1）
+  失效索引条目  1 条索引指向磁盘上不存在的文件
+  近重复工件    2 个工件构成 1 对近重复
+  强制执行      0 条先例生效、0 条接到钩子、0 条触发过；docket 里还有 0 条
+
+按项目（名称已替换）：
+  project-A    15 个工件 · 12 个从未被引用 · 2 个会话
+  project-B    0 个工件 · 0 个从未被引用 · 1 个会话
+  global       4 个工件 · 2 个从未被引用 · 0 个会话
+
+告警: 无
+────────────────────────────────────────────────────────────────────
+只有计数——没有引文、没有路径、没有项目名、没有会话 id。
+复现: precedent audit --share   ·  precedent 0.1.0
+校验: scrub + 词表 + 本机名称：23 项检查，2 种语言，0 处泄漏。
+```
+
+**匿名化是结构性的，不是一道过滤器。** 卡片只由整数和三个封闭词表拼成——五种
+工件类型、五个告警码，以及工具自己造的标签（`project-A`、`s1`）——里面根本没有
+自由文本给脱敏漏掉。项目按扫描顺序改名、会话按开始时间改名，所以你仍然能看出
+14 个从未被引用的工件里有 12 个挤在同一个项目里。
+
+**然后还是要查一遍。** `--share` 会把成品卡片再过一遍 `precedent.scrub`（每条
+引文都要走的那一道 DLP），再补上 scrub 在别处**故意放行**的那几种形状——会话
+UUID、绝对路径、`p-…` id、长 hex 串——最后断言本机的任何字符串（Claude home、
+状态目录、每个项目 slug、会话 id、工件路径与名字）都不是卡片的子串。只要有一条
+活下来，它就**拒绝打印**，只说类别和偏移量并以 2 退出——一条回显泄漏内容的拒绝
+信息本身就是泄漏。`--no-verify` 可以跳过这最后一步，卡片内容完全一样。
+
+上面那棵 fixture 故意埋了四样东西：一个假 API key、一个邮箱、项目名
+`acme-payments` 和一个会话 id；
+[`test_share.py`](packages/precedent/tests/test_share.py) 先断言它们**确实在**
+构建卡片的那棵树里，再断言它们在两种语言的卡片里都一个字都不出现。
+
+另有一棵**对抗性** fixture（`make_fixture_home.py --hostile`）埋了十六样：凭证、
+AWS key、两种格式的手机号、邮箱、微信号、home 路径、Unix 账号、以客户命名的项目
+**和** skill、两个会话 uuid、两种写法的 git remote——每一样都放在不同类型的字段里。
+[`test_share_adversarial.py`](packages/precedent/tests/test_share_adversarial.py)
+断言它们在任何一种 `--share` 调用、任何一种语言下都不会出现；并且当把其中任何一样
+**强行塞回**卡片（哪怕只塞进中文渲染、或只塞进 JSON）时，`--verify` 都是**拒绝打印**
+而不是打印。第四道检查是**白名单**：卡片里的每个词和每个非 ASCII 字母都必须来自从
+字符串表推导出的那份约 90 词的词表——前三道是黑名单，而黑名单只会悄悄失效。
 
 ## 五分钟上手（前四分钟零模型调用、零写入）
 
@@ -553,7 +910,8 @@ Python 3.11+（建议 3.12），**纯标准库**。唯一的可选依赖是 `pre
 > 的指纹对比（每个变动文件都有归因）。最后是你自己开启强制执行的三条命令。
 
 ```bash
-precedent init                        # 10 秒首屏：会话/工件/从未加载/截断/带外写入
+precedent audit --share --lang zh     # 一屏、只有计数、可直接贴出去
+precedent init --lang zh              # 10 秒首屏：会话/工件/从未加载/截断/带外写入
 precedent mine --last 20              # 纠正挖掘 → 主题 → 自动编译 + 出生门
 precedent compile t-1a2b3c4d          # 主题 → DSL 规则 → 时序出生门（证据全量打印）
 precedent docket                      # 队列：候选 + 证据 + diff
@@ -575,7 +933,7 @@ precedent hooks install claude-code --apply --i-know   # 这一步请你亲手�
 的原话附在拦截理由里，让 agent 知道**为什么**。
 
 ```bash
-precedent report --md digest.md                        # 告警/漏斗/docket/收据/支出
+precedent report --md digest.md --lang zh              # 告警/漏斗/docket/收据/支出
 precedent hooks uninstall claude-code --apply --i-know # 只删我们自己写的条目
 ```
 
@@ -649,6 +1007,42 @@ critical。详见 [plugins/openclaw/README.md](plugins/openclaw/README.md)。
 
 ---
 
+## 接受者基准 —— 考的是门，不是 agent
+
+上面所有东西都是一道门。这条命令用来回答"这道门到底行不行"，包括不是我们写的门。
+
+它成立的前提只有一句：**接受者是一个"候选修改"的分类器，所以它的真值可以被种植，
+而 agent 的任务表现不行。** 最便宜的一格甚至零成本——把字节相同、只改空白、只调换
+frontmatter 键序、只加注释的候选喂给门，**任何一次接受按构造都是误接受**，全程没有
+任何人需要标注。
+
+```bash
+precedent bench --all --seeds 200      # 37,400 次判定，约 2 秒，零模型调用
+precedent bench --streams              # 每个变体种了什么，以及验证它的独立判据
+```
+
+六个 SKILL.md 形状的种子工件上的五条流、共 17 个变体：`null`（免费真值）、
+`regression`（与工件自身流程矛盾的规则、"关闭所有窗口"式过度泛化、把占位符写成
+"已验证"）、`unsafe`（凭据外泄、破坏性动词、新增出站主机、删掉确认步骤）、
+`tamper`（改到**评估器**本身的修改）、`good`（真正修好了一个缺陷）。每一个种植的
+标签在出表之前，都会由一个**与生成器不共享代码**的判据重新验证一遍。
+
+结果里有四行值得看：`greedy` 在真实增益恰好为 0 的流上误接受 **47.0%**（PACE 的
+30–42%，在工件层复现）；`evaluate-bundle` 在同一条流上接受 **100%**——这不是 bug，
+我们自己的 OpenClaw 评审器回答的是"写下去安不安全"，从来不是"是不是更好"，这正是
+接受层必须在它前面放一条零流的原因；`tamper` 是统计失守的地方，它**报告出来**的增益
+是全流最大的（因为被改的正是产生这个数字的东西），所以每一个纯统计的行都接受了它的
+71–100%；而 `precedent` 自己的门在四个"错"家族上都是 **0%**，每次判定只花 5.8 对
+评估——因为四级里有三级是免费的。
+
+诚实的代价写在同一行：**52.2% 的改进被漏掉**，其中绝大多数是 `NSF`——在 40 对二值
+结果上检测 +0.25 的提升，这就是正确答案。工件、修改和标签是真的；配对**结果**是按
+表头打印出来的每家族增益模拟的。
+
+[`bench/harbor/`](bench/harbor) 把同样的 17 个用例发布成 **Harbor 任务族**，格式读自
+`harbor-framework/harbor` 的 `3fc050a`（2026-09-17），任何人都能用已有的适配器跑。
+测试会真的执行生成出来的 `tests/test.sh` 与 `solution/solve.sh`。
+
 ## 诚实的限制
 
 - 纠正靠**表层模式**识别，不过模型：没用到词表里任何词的纠正会被漏掉，只是引用了这些
@@ -671,6 +1065,14 @@ critical。详见 [plugins/openclaw/README.md](plugins/openclaw/README.md)。
 - 美元上限约束的是**调用次数**，不是钱：如果 `claude` 既忽略 `--max-budget-usd` 又少报
   花费，次数仍然有界，金额没有。
 - **只有确定性检查**：沙箱可执行检查和判据型检查在方案里写了，没实现。
+- **接受者基准自己种真值，这把刀两面都快**：工件、修改和标签是真的，而且由独立判据
+  复验；但配对**结果**是按声明的每家族增益模拟的。precedent 在 `null` 上的 0% 不是
+  发现——这个家族本来就由参考匹配器定义，而它的第一级用的正是同一个公开匹配器，所以
+  那一格说的是「这道门实现了这一级」；真正值得看的是**没有**实现它的另外八行，包括
+  我们自己的 `evaluate-bundle`（100%）。`tamper` 同样由门也会读的公开契约
+  （Harbor 的 verifier 布局）标注，所以它衡量的是对**已知**契约的覆盖，不是对未知
+  攻击的检出；补上这一格是 L4 密封评估，没有实现。种子只有六个工件，而且是写门的
+  人写的。
 - **一台机器、一个用户**：所有数字都来自作者自己的 `~/.claude`（8 个会话）。跨用户的
   验证是研究轨道的 C1/C2/C3，不是今天在做的主张。
 
@@ -678,9 +1080,12 @@ critical。详见 [plugins/openclaw/README.md](plugins/openclaw/README.md)。
 
 ```
 packages/precedent/   CLI 与闭环        （precedent-cli 0.1.0）
+scripts/build_zipapp.py        构建确定性的单文件 precedent.pyz
+scripts/make_fixture_home.py   文档里每个数字所依据的合成 Claude home
 packages/receipts/    L0：到底加载了没有 （receipts 0.1.0）
 packages/acceptor/    L3：接受的统计学   （acceptor 0.2.0）
 plugins/openclaw/     OpenClaw 插件      （@precedent/openclaw 0.1.0）
+bench/harbor/         接受者基准的 Harbor 任务族（17 个用例）
 research/             四天调研的原始证据（见 research/README.md）
 scripts/dev.sh        三个 uv venv + 三套测试
 方案.md               完整设计文档

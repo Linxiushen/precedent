@@ -67,17 +67,48 @@ _LAZY_BENCH = {
 }
 
 
+# The artefact-level half of the bench (labelled streams over SKILL.md-shaped
+# bundles) is likewise lazy: it carries a seed corpus and a pile of regexes that
+# a caller who only wants the decision core should not pay for.
+_LAZY_STREAMS = {
+    "Acceptor",
+    "Budget",
+    "Bundle",
+    "Candidate",
+    "Seed",
+    "ScoreCard",
+    "StreamResult",
+    "Verdict",
+    "FAMILIES",
+    "VARIANTS",
+    "SEEDS",
+    "EVALUATOR_SURFACE",
+    "DEFAULT_LIFTS",
+    "behaviour_identical",
+    "behaviour_key",
+    "make_candidate",
+    "reference_acceptors",
+    "score",
+    "stream",
+    "verify_label",
+}
+
+
 def __getattr__(name: str):
     if name in _LAZY_BENCH:
         from . import bench
 
         return getattr(bench, name)
+    if name in _LAZY_STREAMS:
+        from . import streams
+
+        return getattr(streams, name)
     raise AttributeError(f"module 'acceptor' has no attribute {name!r}")
 
 
 def __dir__() -> list[str]:
     # Without this the lazily-exported bench names are in __all__ but invisible to dir().
-    return sorted(set(globals()) | _LAZY_BENCH)
+    return sorted(set(globals()) | _LAZY_BENCH | _LAZY_STREAMS)
 
 
 #: Canonical names. Two aliases are kept for backwards compatibility and are *not* listed:
@@ -136,4 +167,25 @@ __all__ = [
     "AdversarialResult",
     "run_bench",
     "run_adversarial",
+    # streams (labelled artefact-level streams; lazy)
+    "Acceptor",
+    "Budget",
+    "Bundle",
+    "Candidate",
+    "Seed",
+    "ScoreCard",
+    "StreamResult",
+    "Verdict",
+    "FAMILIES",
+    "VARIANTS",
+    "SEEDS",
+    "EVALUATOR_SURFACE",
+    "DEFAULT_LIFTS",
+    "behaviour_identical",
+    "behaviour_key",
+    "make_candidate",
+    "reference_acceptors",
+    "score",
+    "stream",
+    "verify_label",
 ]

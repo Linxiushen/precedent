@@ -70,12 +70,23 @@ def test_is_real_claude_home_only_matches_the_users_own(tmp_path):
 
 def test_init_creates_state_and_prints_the_ten_line_headline(cli, capsys,
                                                              real_home_canary):
+    # English is the default: this is the first screen a stranger sees.
     assert cli("init") == 0
     out = capsys.readouterr().out
     for n in range(1, 11):
         assert f"{n:2d}. " in out or f" {n}. " in out, f"line {n} missing"
-    assert "会话" in out and "学习工件" in out and "从未被引用" in out
-    assert "无人值守写入" in out and "已强制执行的先例: 0 条" in out
+    assert "sessions" in out and "learned artifacts" in out
+    assert "never cited" in out and "unattended writes" in out
+    assert "precedents enforced: 0" in out
+    assert "首屏" not in out
+
+    # ...and --lang zh still renders exactly the screen it always did.
+    assert cli("init", "--lang", "zh") == 0
+    zh = capsys.readouterr().out
+    for n in range(1, 11):
+        assert f"{n:2d}. " in zh or f" {n}. " in zh, f"line {n} missing"
+    assert "会话" in zh and "学习工件" in zh and "从未被引用" in zh
+    assert "无人值守写入" in zh and "已强制执行的先例: 0 条" in zh
 
     state = StateDir.open(cli.state, cli.home)
     assert os.path.exists(state.config_path)
@@ -129,9 +140,17 @@ def test_mine_reports_and_persists_topics(cli, capsys, tmp_path, real_home_canar
     out_json = str(tmp_path / "mine.json")
     assert cli("mine", "--json", out_json) == 0
     out = capsys.readouterr().out
-    assert "检出纠正" in out and "重复主题" in out
+    assert "corrections detected" in out and "repeated topics" in out
     assert "written but violated" in out
+    # the frame is English; the evidence is still the bytes you typed
     assert "不要用 pip，用 uv。" in out
+
+    assert cli("mine", "--lang", "zh", "--quiet") == 0
+    capsys.readouterr()
+    assert cli("mine", "--lang", "zh") == 0
+    zh = capsys.readouterr().out
+    assert "检出纠正" in zh and "重复主题" in zh
+    assert "不要用 pip，用 uv。" in zh
 
     data = json.load(open(out_json, encoding="utf-8"))
     assert data["mine"]["nCorrections"] == 6
@@ -267,13 +286,25 @@ def test_report_combines_everything(cli, capsys, tmp_path, real_home_canary):
     md = str(tmp_path / "digest.md")
     assert cli("report", "--md", md, "--quiet") == 0
     text = open(md, encoding="utf-8").read()
+    for section in ("## 0. Alarms (STARVATION)", "## 1. First screen",
+                    "## 2. The funnel: proposed → accepted → activated → attributed",
+                    "## 3. The docket", "## 4. Ownership of the governed trees",
+                    "## 5. Load receipts (live wins)", "## 6. Correction mining",
+                    "## 7. Confirmed precedents", "## 8. Spend",
+                    "## 9. The last 7 days", "## 10. Ledger tail",
+                    "## 11. Install status", "## 12. Honest limitations"):
+        assert section in text, section
+
+    md_zh = str(tmp_path / "digest-zh.md")
+    assert cli("report", "--md", md_zh, "--quiet", "--lang", "zh") == 0
+    zh = open(md_zh, encoding="utf-8").read()
     for section in ("## 0. 告警（STARVATION）", "## 1. 首屏",
                     "## 2. 漏斗：proposed → accepted → activated → attributed",
                     "## 3. 待办（docket）", "## 4. 治理树所有权",
                     "## 5. 加载收据（live 优先）", "## 6. 纠正挖掘",
                     "## 7. 已确认的先例", "## 8. 支出表", "## 9. 最近 7 天",
                     "## 10. 账本尾部", "## 11. 安装状态", "## 12. 诚实的限制"):
-        assert section in text, section
+        assert section in zh, section
     assert tree_fingerprint(cli.home) == tree_fingerprint(cli.home)
     real_home_canary()
 

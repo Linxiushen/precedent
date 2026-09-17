@@ -33,6 +33,12 @@ outputs/
 scratchpad/
 *.log
 
+# ...except the acceptor benchmark's task family, which is generated on purpose
+# and checked in so it can be run.  One of its tamper cases plants a
+# `results/latest.json` inside a skill bundle -- that file IS the test case, and
+# the rule above would have silently dropped it from the commit.
+!bench/harbor/**
+
 # precedent's own state directory, if someone points --state-dir at the repo.
 # Nothing under it belongs in version control: it holds blobs of the user's
 # own files, hook logs, spend records and the hash-chained ledger.
@@ -53,3 +59,8 @@ Thumbs.db
 
 # Node (plugins/openclaw)
 node_modules/
+
+# The throwaway venv scripts/dev.sh --zipapp and CI build to prove the zipapp
+# needs nothing installed.  uv drops a self-ignoring .gitignore inside it; this
+# line is so `git status` does not show the directory itself either.
+.venv-bare/

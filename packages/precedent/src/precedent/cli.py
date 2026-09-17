@@ -18,9 +18,16 @@
     precedent hooks status claude-code   what is installed, and any drift
     precedent snapshot                   content-addressed learned-state snapshot
     precedent undo --session <id>        restore what one session wrote (dry-run)
+    precedent audit [--share]            the one-screen card (counts only)
     precedent report                     the daily digest: alarms, funnel, spend
     precedent evaluate-bundle --stdin    grade an OpenClaw skill bundle (JSON in,
                                          the evaluator's result JSON out)
+    precedent bench --all                THE ACCEPTOR BENCHMARK: labelled
+                                         streams, every acceptor scored
+
+Every command is English by default and Chinese with ``--lang zh`` (the locale
+is consulted when the flag is absent); the *frame* is translated, quotes and
+paths never are.
 
 Every command that could reach the Claude home is read-only or defaults to
 ``--dry-run``.  ``hooks install/uninstall --apply`` is the only command that may
@@ -38,10 +45,14 @@ import sys
 from datetime import datetime, timezone
 
 from acceptor import Certificate
+from acceptor.streams import FAMILIES as STREAM_FAMILIES
+from acceptor.streams import format_streams
 
-from . import __version__
+from . import __version__, i18n
 from .accept import (DEFAULT_ALPHA0, DEFAULT_HARM_ALPHA, AcceptanceResult,
                      accept_outcomes, render_acceptance, verify_acceptance)
+from .bench import (ALL_ACCEPTORS, DEFAULT_BUDGET, emit_harbor,
+                    render_result, run as run_bench)
 from .bundle import (BundleError, evaluate_event, event_from_dirs, load_event,
                      render_human)
 from .compile import (DEFAULT_EPSILON, FOLLOW_UP_TURNS, MIN_ELIGIBLE_AFTER,
@@ -70,7 +81,10 @@ from .llm import (DEFAULT_BUDGET_USD, DEFAULT_MODEL, LLMUnavailable,
                   llm_draft_rules, total_spend)
 from .rules import ASK_BEFORE_PRESETS
 from .mine import DEFAULT_SIMILARITY, load_topics, mine, write_topics
+from .i18n import t as tr          # `t` is a loop variable all over this file
 from .report import render_digest, render_headline, render_mine_markdown
+from .share import (build_card, foreign_tokens, leaks, render_card,
+                    secrets_of, shareable, verify_checks)
 from .snapshot import UndoRefused, apply_undo, plan_undo, take_snapshot
 from .state import (DEFAULT_CLAUDE_HOME, DEFAULT_STATE_DIR,
                     ClaudeHomeWriteRefused, StateDir, is_real_claude_home,
@@ -84,6 +98,12 @@ __all__ = ["build_parser", "main"]
 # --------------------------------------------------------------------------
 
 def _common(p: argparse.ArgumentParser) -> None:
+    # SUPPRESS, not None: a subparser default would otherwise overwrite the
+    # value `precedent --lang zh init` already put in the namespace.
+    p.add_argument("--lang", choices=i18n.LANGS, default=argparse.SUPPRESS,
+                   help="output language for the frame (labels, headings, "
+                        "summaries); quotes and paths are never translated. "
+                        "Default: $PRECEDENT_LANG / $LC_ALL / $LANG, else en")
     p.add_argument("--claude-home", default=None, metavar="PATH",
                    help=f"Claude home to read (default: $CLAUDE_CONFIG_DIR or "
                         f"{DEFAULT_CLAUDE_HOME}); it is never written")
@@ -200,9 +220,9 @@ def cmd_init(args) -> int:
     sys.stdout.write(headline)
     live = getattr(result, "live", None) or {}
     if live.get("rows"):
-        print(f"（实时钩子收据: {live['rows']} 行 / {live['sessions']} 个会话，"
-              f"覆盖 {live['overrides']} 条推断结论）")
-    print(f"\n（receipts 扫描已存档: {scan_path}）")
+        print(tr("init.live", rows=live["rows"], sessions=live["sessions"],
+                overrides=live["overrides"]))
+    print("\n" + tr("init.archived", path=scan_path))
     return 0
 
 
@@ -937,6 +957,60 @@ def cmd_loop(args) -> int:
     return 0
 
 
+def cmd_audit(args) -> int:
+    """``precedent audit`` — the one-screen card; ``--share`` anonymises it.
+
+    The card is built from counts only (:mod:`precedent.share`), so there is no
+    text in it to redact.  ``--share`` then runs the finished card back through
+    :mod:`precedent.scrub` plus this machine's own secrets and **refuses to
+    print** if anything survives; ``--no-verify`` turns that last check off, and
+    nothing else about the card changes when you do.
+    """
+    state = _open_state(args, create=False)
+    bad = _require_home(state)
+    if bad:
+        return bad
+    now = datetime.now(timezone.utc)
+    result = _run_scan(state, project=args.project, last_n=args.last_n)
+    card = build_card(result, state, now=now, days=args.days,
+                      settings_path=args.settings)
+    payload = shareable(card) if args.share else card
+
+    checked = verify_checks() if (args.share and args.verify) else None
+    # The bytes that are verified are the bytes that are printed — the same
+    # serialisation, the same receipt line.  Verifying a *nearly* identical
+    # rendering is how a check ends up blessing something it never saw.
+    json_blob = json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True)
+
+    if args.share and args.verify:
+        secrets = secrets_of(result, state)
+        # Every language, not just the one being printed.  The card is built
+        # from counts and the counts do not change with the locale — but the
+        # *renderer* differs per language, and a check that only ever looks at
+        # the language the developer happens to run is a check with a blind
+        # spot the size of a translation.
+        found = leaks(json_blob, secrets)
+        for one in i18n.LANGS:
+            text = render_card(payload, lang=one, local=False, verified=checked)
+            found += leaks(text, secrets)
+            found += foreign_tokens(text, lang=one)
+        found.sort(key=lambda f: (f["start"], f["kind"]))
+        if found:
+            print(tr("audit.refused", n=len(found)), file=sys.stderr)
+            for f in found[:10]:
+                # the kind and the offset, never the content: a refusal message
+                # that echoed the leak would be the leak
+                print(f"  - {f['kind']} @ {f['start']}", file=sys.stderr)
+            print(tr("audit.refused.hint"), file=sys.stderr)
+            return 2
+
+    if args.json_out:
+        sys.stdout.write(json_blob + "\n")
+        return 0
+    sys.stdout.write(render_card(payload, local=not args.share, verified=checked))
+    return 0
+
+
 def cmd_report(args) -> int:
     state = _open_state(args)
     bad = _require_home(state)
@@ -1030,6 +1104,100 @@ def _emit_bundle(args, doc: dict) -> None:
     sys.stdout.flush()
 
 
+def _parse_lifts(raw: str | None) -> dict | None:
+    """``good=0.3,regression=-0.4`` -> a lift override map."""
+    if not raw:
+        return None
+    out: dict[str, float] = {}
+    for item in raw.split(","):
+        item = item.strip()
+        if not item:
+            continue
+        if "=" not in item:
+            raise ValueError(f"--lift wants family=value, got {item!r}")
+        fam, value = item.split("=", 1)
+        fam = fam.strip()
+        if fam not in STREAM_FAMILIES:
+            raise ValueError(f"--lift: unknown family {fam!r}; choose from "
+                             f"{','.join(STREAM_FAMILIES)}")
+        out[fam] = float(value)
+    return out
+
+
+def _csv(raw, default=None):
+    """``"a, b"`` -> ``("a", "b")``; empty or missing -> ``default``."""
+    if raw is None:
+        return default
+    items = tuple(x.strip() for x in str(raw).split(",") if x.strip())
+    return items or default
+
+
+def cmd_bench(args) -> int:
+    """``precedent bench`` — score every acceptor on the labelled streams.
+
+    Offline, deterministic and free: no model call, no network, no Claude home,
+    no state directory.  The seed corpus and every candidate edit are generated
+    in memory, and each candidate's planted label is re-verified by an
+    independent oracle before the table is printed — a benchmark that cannot
+    check its own ground truth is a leaderboard, not a measurement.
+    """
+    if args.all and (args.families is not None or args.acceptors is not None):
+        # --all means "everything"; silently letting a narrowing flag win would
+        # print a table whose header disagrees with the command that made it.
+        print("precedent: --all cannot be combined with --families or "
+              "--acceptors; drop --all to narrow the run", file=sys.stderr)
+        return 2
+    families = _csv(args.families, STREAM_FAMILIES)
+    bad = [f for f in families if f not in STREAM_FAMILIES]
+    if bad:
+        print(f"precedent: unknown families {bad}; choose from "
+              f"{','.join(STREAM_FAMILIES)}", file=sys.stderr)
+        return 2
+    if args.emit_harbor:
+        out = emit_harbor(args.emit_harbor, families=families)
+        print(f"precedent: {len(out['tasks'])} Harbor tasks, {out['files']} files "
+              f"under {out['root']} ({len(out['changed'])} changed)",
+              file=sys.stderr)
+        if args.json_out:
+            sys.stdout.write(json.dumps(out, ensure_ascii=False, indent=2) + "\n")
+        else:
+            for t in out["tasks"]:
+                print(f"  {t['dir']:<28} {t['name']:<52} -> "
+                      f"{t['expected_decision']}")
+        return 0
+    if args.streams:
+        sys.stdout.write(format_streams(families) + "\n")
+        return 0
+    try:
+        lifts = _parse_lifts(args.lift)
+    except ValueError as exc:
+        print(f"precedent: {exc}", file=sys.stderr)
+        return 2
+    try:
+        res, extra = run_bench(
+            runs=args.seeds, families=families,
+            acceptor_names=_csv(args.acceptors), budget=args.budget,
+            p_inc=args.p_inc, alpha=args.alpha,
+            harm_alpha=None if args.no_harm else args.harm_alpha,
+            lifts=lifts, seed0=args.seed0, verify=not args.no_verify)
+    except ValueError as exc:
+        print(f"precedent: {exc}", file=sys.stderr)
+        return 2
+    doc = dict(res.as_dict(), **extra)
+    text = render_result(res, extra)
+    if args.md_out:
+        os.makedirs(os.path.dirname(os.path.abspath(args.md_out)) or ".",
+                    exist_ok=True)
+        with open(args.md_out, "w", encoding="utf-8") as fh:
+            fh.write("```\n" + text + "\n```\n")
+        print(f"precedent: wrote {args.md_out}", file=sys.stderr)
+    if args.json_out:
+        sys.stdout.write(json.dumps(doc, ensure_ascii=False, indent=2) + "\n")
+    else:
+        sys.stdout.write(text + "\n")
+    return 0
+
+
 # --------------------------------------------------------------------------
 # parser
 # --------------------------------------------------------------------------
@@ -1042,6 +1210,10 @@ def build_parser() -> argparse.ArgumentParser:
                     "the record (temporal birth gate), enforce them with hooks. "
                     "Every command is free and offline except `compile --llm`.")
     p.add_argument("--version", action="version", version=f"precedent {__version__}")
+    p.add_argument("--lang", choices=i18n.LANGS, default=None,
+                   help="output language for the frame; also accepted after the "
+                        "subcommand. Default: $PRECEDENT_LANG / $LC_ALL / $LANG, "
+                        "else en")
     sub = p.add_subparsers(dest="command", required=True)
 
     # init
@@ -1353,6 +1525,31 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--quiet", action="store_true")
     s.set_defaults(func=cmd_loop)
 
+    # audit
+    s = sub.add_parser("audit",
+                       help="the one-screen card: counts only, no quotes, no "
+                            "paths; --share anonymises it for pasting")
+    _common(s)
+    _scan_filters(s)
+    s.add_argument("--share", action="store_true",
+                   help="drop the local block and emit only the anonymised "
+                        "card: project names become project-A/B/…, session ids "
+                        "become s1/s2/…, and nothing else from your machine is "
+                        "in it")
+    s.add_argument("--json", dest="json_out", action="store_true",
+                   help="emit the card as JSON on stdout instead of text")
+    s.add_argument("--verify", dest="verify", action="store_true", default=True,
+                   help="re-scrub the finished card through precedent.scrub "
+                        "plus this machine's own names and refuse to print if "
+                        "anything survives (the default for --share)")
+    s.add_argument("--no-verify", dest="verify", action="store_false",
+                   help="skip that last check; the card is unchanged either way")
+    s.add_argument("--days", type=int, default=7, metavar="N",
+                   help="window for the unattended-write count (default 7)")
+    s.add_argument("--settings", default=None, metavar="PATH",
+                   help="settings.json to read for the activation count")
+    s.set_defaults(func=cmd_audit)
+
     # report
     s = sub.add_parser("report", help="the daily digest: alarms, funnel, spend")
     _common(s)
@@ -1398,11 +1595,65 @@ def build_parser() -> argparse.ArgumentParser:
                         "caller then sees a traceback on stderr and a non-zero "
                         "exit instead of a verdict")
     s.set_defaults(func=cmd_evaluate_bundle)
+
+    # bench  (THE ACCEPTOR BENCHMARK)
+    s = sub.add_parser("bench",
+                       help="THE ACCEPTOR BENCHMARK: labelled streams of "
+                            "candidate edits (null / regression / unsafe / "
+                            "tamper / good) and every acceptor scored on them")
+    s.add_argument("--all", action="store_true",
+                   help="every family and every acceptor (the default; the flag "
+                        "is here so the headline command reads as it means, and "
+                        "it refuses to be combined with --families/--acceptors)")
+    s.add_argument("--seeds", type=int, default=20, metavar="N",
+                   help="independent passes over the stream (default 20; each "
+                        "pass is one candidate per variant, on a rotating "
+                        "artefact)")
+    s.add_argument("--budget", type=int, default=DEFAULT_BUDGET, metavar="N",
+                   help=f"paired evaluations an acceptor may draw per decision "
+                        f"(default {DEFAULT_BUDGET})")
+    s.add_argument("--families", default=None, metavar="A,B",
+                   help=f"which streams to run (default all: "
+                        f"{','.join(STREAM_FAMILIES)})")
+    s.add_argument("--acceptors", default=None, metavar="A,B",
+                   help=f"which acceptors to score (default all: "
+                        f"{','.join(ALL_ACCEPTORS)})")
+    s.add_argument("--p-inc", dest="p_inc", type=float, default=0.5, metavar="P",
+                   help="the incumbent's per-instance pass probability (0.5)")
+    s.add_argument("--alpha", type=float, default=0.05,
+                   help="the acceptance level the gates are run at (0.05)")
+    s.add_argument("--harm-alpha", dest="harm_alpha", type=float, default=0.05,
+                   help="the harm martingale's level (0.05)")
+    s.add_argument("--no-harm", action="store_true",
+                   help="turn the harm martingale off in the gate acceptors")
+    s.add_argument("--lift", default=None, metavar="FAM=X,FAM=Y",
+                   help="override the declared per-family effect, e.g. "
+                        "`good=0.3,regression=-0.4`")
+    s.add_argument("--seed0", type=int, default=0,
+                   help="the base seed; runs use seed0 + 7919*run")
+    s.add_argument("--streams", action="store_true",
+                   help="print what each variant plants and the oracle that "
+                        "verifies it, and stop")
+    s.add_argument("--emit-harbor", dest="emit_harbor", default=None,
+                   metavar="DIR",
+                   help="write the stream as a Harbor task family under DIR "
+                        "(plus streams.json for non-Harbor runners) and stop")
+    s.add_argument("--no-verify", action="store_true",
+                   help="skip re-verifying each planted label with its "
+                        "independent oracle (it is on by default)")
+    s.add_argument("--json", dest="json_out", action="store_true",
+                   help="emit the full result document instead of the table")
+    s.add_argument("--md", dest="md_out", default=None, metavar="PATH",
+                   help="also write the table to PATH as a fenced block")
+    s.set_defaults(func=cmd_bench)
     return p
 
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    # --lang > $PRECEDENT_LANG > $LC_ALL > $LC_MESSAGES > $LANG > en.  Set once,
+    # here, so every renderer downstream agrees without threading a parameter.
+    i18n.set_lang(i18n.resolve(getattr(args, "lang", None)))
     try:
         return int(args.func(args) or 0)
     except BrokenPipeError:                               # pragma: no cover - piping

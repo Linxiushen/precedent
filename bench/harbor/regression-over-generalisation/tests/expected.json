@@ -1,0 +1,7 @@
+{
+  "artefact": "repo-cleanup",
+  "decision": "reject",
+  "family": "regression",
+  "note": "bounded step widened to 'all paths' — the 02:17 background-fork shape",
+  "variant": "over-generalisation"
+}

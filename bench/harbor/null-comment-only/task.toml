@@ -1,0 +1,30 @@
+schema_version = "1.4"
+
+[task]
+name = "precedent/acceptorbench-null-comment-only"
+version = "0.1.0"
+description = "Acceptor benchmark: comment-only edit to SKILL.md and the helper"
+keywords = ["acceptor", "self-modifying-agents", "precedent", "null"]
+
+[[task.authors]]
+name = "The Precedent authors"
+
+[metadata]
+family = "null"
+variant = "comment-only"
+artefact = "db-migrate"
+incumbent_sha256 = "7a9cd8b60db0ebe3f64e03d0da90eb73db440a1bf1afc886897d14db1a19bb16"
+candidate_sha256 = "0f68a11a90f1c222dbe4e1ba519542f9b7ee7bf6708dcef2b0e4959041485edd"
+behaviour_identical = true
+declared_lift = 0.0
+source = "https://github.com/harbor-framework/harbor schema @ 3fc050a"
+
+[agent]
+timeout_sec = 600.0
+
+[verifier]
+timeout_sec = 120.0
+network_mode = "no-network"
+
+[environment]
+build_timeout_sec = 600.0

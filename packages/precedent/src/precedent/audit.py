@@ -334,7 +334,14 @@ def alarms(state, entries: list[dict], fun: dict, health: dict,
                              f"（共 {health['calls']} 次钩子调用）——"
                              f"要么 agent 真的改了，要么规则匹配不到现实",
                 "action": "precedent report --md digest.md  # 看 funnel 一节"})
-    if hooks_status.get("drift"):
+    # A machine that never ran `hooks install` and has nothing to enforce has
+    # not *drifted*; it is simply not set up yet, and calling that an alarm on
+    # somebody's first run teaches them to ignore the alarm list.  The moment
+    # there is a confirmed precedent, NOT_INSTALLED above says so instead.
+    never_installed = (not hooks_status.get("installed")
+                       and hooks_status.get("receipt") is None
+                       and n_active == 0)
+    if hooks_status.get("drift") and not never_installed:
         out.append({
             "code": "DRIFT", "level": "STARVATION",
             "message": f"安装漂移 {len(hooks_status['drift'])} 项："

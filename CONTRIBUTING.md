@@ -31,8 +31,22 @@ A feature that silently gets worse when an extra is missing is a bug.
 
 Every test builds a **synthetic Claude home under `tmp_path`** and points
 `--state-dir` at `tmp_path` too. `packages/precedent/tests/conftest.py`
-provides `fake_home`, `mining_home`, `home_builder`, `exam_builder` and
-`fake_claude` (a PATH shim standing in for the `claude` binary) for this.
+provides `fake_home`, `mining_home`, `demo_home`, `hostile_home`,
+`home_builder`, `exam_builder` and `fake_claude` (a PATH shim standing in for
+the `claude` binary) for this.
+
+Two of those come from `scripts/make_fixture_home.py`, so the tree the docs
+describe is the tree under test:
+
+* `demo_home` — the README's tree. Its shape is pinned by every number in the
+  docs, so changing it means changing them; plants four secrets.
+* `hostile_home` — `make_fixture_home.py --hostile`. No documentation duty, so
+  it is free to be as hostile as a real machine: sixteen plants (credential,
+  AWS key, two phone formats, email, WeChat id, home path, Unix account, a
+  project *and* a skill named after a paying customer, two session uuids, a git
+  remote in both syntaxes), each in a different kind of field. Widening the
+  adversarial review of `audit --share` means adding a line to
+  `HOSTILE_PLANTS`, not editing a test.
 
 Any test that exercises a write path must take the `real_home_canary` fixture
 and call it at the end:
@@ -97,7 +111,25 @@ Neither writes a user file. An acceptance layer that also writes is a proposer
 with a rubber stamp — if a change would make precedent edit a skill, a
 CLAUDE.md or a settings file on its own, it is out of scope.
 
-### 7. Honesty in the output is a feature, not a footnote
+### 7. User-facing text goes through `i18n.STRINGS`, evidence never does
+
+Every label, heading and summary sentence is a string id in
+`packages/precedent/src/precedent/i18n.py` with an `en` and a `zh` entry.
+`tests/test_i18n.py` walks the whole table and fails if an id is missing a
+language or if the two languages disagree about their `{placeholders}`, so a
+half-translated string cannot merge.
+
+The other half of the rule matters more: **evidence is never translated.** A
+quote from a transcript, a path, a rule id, a matcher, a tool name and a
+`counts` string are reproduced byte for byte in every language. A report whose
+evidence changes with `$LANG` is a report nobody can check by hand, and
+checkable-by-hand is the whole product.
+
+The same rule makes `precedent audit --share` possible: the card is assembled
+from integers and closed vocabularies, never from text, which is why there is
+nothing in it to redact. If you add a field to that card, add a *count*.
+
+### 8. Honesty in the output is a feature, not a footnote
 
 Counts before percentages. `INSUFFICIENT`, `INCONCLUSIVE`, `NSF` and "no effect
 measured" are first-class results, printed plainly. A limitation belongs in the
@@ -121,7 +153,31 @@ system Python on macOS is 3.9 and will not work — never use it.
 ./scripts/dev.sh --venvs        # (re)create the venvs only
 ./scripts/dev.sh --tests        # run the suites only
 ./scripts/dev.sh --clean        # remove the venvs and caches
+./scripts/dev.sh --zipapp       # build dist/precedent.pyz, check that two
+                                #   builds are byte-identical, run it in a uv
+                                #   venv that has none of the packages, then
+                                #   run it again with a hostile decoy first on
+                                #   PYTHONPATH and print where each import
+                                #   actually resolved
+./scripts/dev.sh --demo         # build the fixture Claude home and print the
+                                #   `audit --share` card that is in the README
 ```
+
+The zipapp is how a stranger installs this (`curl` one file, run it), so a
+change that breaks it breaks the install. `scripts/build_zipapp.py` only ships
+`.py` files under the three `src` trees: a package that grows a data file has
+to be added there deliberately, and `plib_source()` in `hooks.py` is the
+worked example of code that must read its own package from *either* a
+filesystem or a zip.
+
+"Self-contained" is tested in both directions, and the second one is the one
+that matters on somebody else's laptop. Running it where the packages are
+*absent* only shows it does not need them; running it where they are **present
+and wrong** — a stale `pip install`, a leftover `PYTHONPATH`, the directory the
+user is standing in — shows the archive wins the import. The decoy in
+`tests/test_zipapp.py` and in `dev.sh --zipapp` exits non-zero and writes a
+marker file if it is ever imported, so a silent shadow is not a way for either
+to pass.
 
 Per package:
 

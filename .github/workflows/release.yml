@@ -41,24 +41,76 @@ jobs:
           done
           ls -l dist
 
+      # The README's first install line is "download precedent.pyz", so the
+      # release has to actually carry one — built deterministically, with its
+      # sha256 next to it so a download can be checked.
+      - name: Build the zipapp and its checksum
+        run: |
+          set -euo pipefail
+          python3 scripts/build_zipapp.py --out dist/precedent.pyz
+          python3 scripts/build_zipapp.py --check
+          (cd dist && sha256sum precedent.pyz > precedent.pyz.sha256)
+          cat dist/precedent.pyz.sha256
+
+      - name: The zipapp runs with nothing installed
+        run: |
+          set -euo pipefail
+          uv venv --python 3.12 .venv-bare
+          python3 scripts/make_fixture_home.py "$RUNNER_TEMP/claude-home"
+          .venv-bare/bin/python dist/precedent.pyz --version
+          .venv-bare/bin/python dist/precedent.pyz init \
+            --state-dir "$RUNNER_TEMP/state" \
+            --claude-home "$RUNNER_TEMP/claude-home" > /dev/null
+          echo "precedent.pyz runs standalone."
+
       - name: The tag must match the version it claims to release
         run: |
           set -euo pipefail
           tag="${GITHUB_REF_NAME#v}"
           [ -z "$tag" ] && exit 0
+          # A pre-release tag (v0.1.0-rc1) releases the v0.1.0 artifacts with a
+          # suffix that says "not final"; compare the release part only.
+          base="${tag%%-*}"
           got=$(ls dist/precedent_cli-*.whl | sed -E 's/.*precedent_cli-([0-9.]+)-.*/\1/')
-          echo "tag=$tag  precedent-cli=$got"
-          test "$tag" = "$got"
+          echo "tag=$tag  base=$base  precedent-cli=$got"
+          test "$base" = "$got"
 
       - uses: actions/upload-artifact@v4
         with:
           name: dists
           path: dist/
 
+  attach:
+    name: attach precedent.pyz to the release
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write          # only to upload the asset onto the tag's release
+    if: startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dists
+          path: dist/
+      - name: Upload the zipapp, its checksum, and the three wheels
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh release upload "$GITHUB_REF_NAME" \
+            dist/precedent.pyz dist/precedent.pyz.sha256 \
+            dist/*.whl \
+            --repo "$GITHUB_REPOSITORY" --clobber
+
   publish:
     name: publish to PyPI
     needs: build
     runs-on: ubuntu-latest
+    # A pre-release (any tag with a `-suffix`: v0.1.0-rc1, -a1, -b2) builds and
+    # is attached to GitHub, and stops there.  PyPI has no pre-release channel
+    # you can take back, and a release candidate is by definition the thing you
+    # might have to take back.  Only a bare `vX.Y.Z` publishes.
+    if: ${{ !contains(github.ref_name, '-') }}
     environment: pypi
     permissions:
       id-token: write          # the OIDC token the Trusted Publisher verifies

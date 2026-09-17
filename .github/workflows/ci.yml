@@ -112,6 +112,149 @@ jobs:
           done
           echo "no Claude home was created by the plugin suite."
 
+  zipapp:
+    name: precedent.pyz runs with nothing installed
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          cache-dependency-glob: "packages/*/pyproject.toml"
+
+      - name: Build it, and prove the build is reproducible
+        run: |
+          set -euo pipefail
+          python3 scripts/build_zipapp.py --out dist/precedent.pyz
+          python3 scripts/build_zipapp.py --check
+          ls -l dist/precedent.pyz
+
+      - name: A Python with NONE of the three packages installed
+        run: |
+          set -euo pipefail
+          uv venv --python 3.12 .venv-bare
+          # The point of the job: if this venv had the packages, the run below
+          # would prove nothing at all.
+          .venv-bare/bin/python - <<'PY'
+          import importlib.util, sys
+          present = [m for m in ("receipts", "acceptor", "precedent")
+                     if importlib.util.find_spec(m) is not None]
+          if present:
+              sys.exit("this venv already has %s installed" % ", ".join(present))
+          print("site-packages has none of receipts / acceptor / precedent")
+          PY
+
+      - name: Run it from a clean checkout, against a fixture Claude home
+        run: |
+          set -euo pipefail
+          python3 scripts/make_fixture_home.py "$RUNNER_TEMP/claude-home"
+          .venv-bare/bin/python dist/precedent.pyz --version
+          .venv-bare/bin/python dist/precedent.pyz init \
+            --state-dir "$RUNNER_TEMP/state" \
+            --claude-home "$RUNNER_TEMP/claude-home"
+          .venv-bare/bin/python dist/precedent.pyz audit --share \
+            --state-dir "$RUNNER_TEMP/state" \
+            --claude-home "$RUNNER_TEMP/claude-home"
+          .venv-bare/bin/python dist/precedent.pyz audit --share --lang zh \
+            --state-dir "$RUNNER_TEMP/state" \
+            --claude-home "$RUNNER_TEMP/claude-home"
+
+      - name: The share card leaks nothing the fixture planted
+        run: |
+          set -euo pipefail
+          .venv-bare/bin/python dist/precedent.pyz audit --share --json \
+            --state-dir "$RUNNER_TEMP/state" \
+            --claude-home "$RUNNER_TEMP/claude-home" > card.json
+          # --share --verify already refused to print anything that leaks; this
+          # is the independent check, from outside the tool.
+          python3 - <<PY
+          import json, sys
+          card = open("card.json", encoding="utf-8").read()
+          sys.path.insert(0, "scripts")
+          from make_fixture_home import (PLANTED_TOKEN, PLANTED_EMAIL,
+                                         PROJECT_A_SLUG, SESSION_1)
+          home = "$RUNNER_TEMP/claude-home"
+          for secret in (PLANTED_TOKEN, PLANTED_EMAIL, PROJECT_A_SLUG, SESSION_1,
+                         home):
+              if secret in card:
+                  sys.exit("the share card leaked %r" % secret[:24])
+          doc = json.loads(card)
+          assert "local" not in doc, "--share kept the local block"
+          assert doc["corpus"]["sessions"] == 3, doc["corpus"]
+          print("share card: 0 of 5 planted secrets present")
+          PY
+
+      - name: The adversarial tree leaks nothing either, in either language
+        run: |
+          set -euo pipefail
+          python3 scripts/make_fixture_home.py "$RUNNER_TEMP/hostile" --hostile
+          for lang in en zh; do
+            .venv-bare/bin/python dist/precedent.pyz audit --share --lang "$lang" \
+              --state-dir "$RUNNER_TEMP/hstate" \
+              --claude-home "$RUNNER_TEMP/hostile" >> hostile-card.txt
+          done
+          .venv-bare/bin/python dist/precedent.pyz audit --share --json \
+            --state-dir "$RUNNER_TEMP/hstate" \
+            --claude-home "$RUNNER_TEMP/hostile" >> hostile-card.txt
+          python3 - <<PY
+          import sys
+          card = open("hostile-card.txt", encoding="utf-8").read().lower()
+          sys.path.insert(0, "scripts")
+          from make_fixture_home import HOSTILE_PLANTS
+          bad = [(w, lit) for w, lit in HOSTILE_PLANTS if lit.lower() in card]
+          if bad:
+              sys.exit("the share card leaked: %s" % ", ".join(w for w, _ in bad))
+          print("share card: 0 of %d planted secrets present, en + zh + json"
+                % len(HOSTILE_PLANTS))
+          PY
+
+      - name: A hostile PYTHONPATH cannot shadow the vendored packages
+        run: |
+          set -euo pipefail
+          # The other half of "self-contained": not "the packages are missing"
+          # but "the packages are present and wrong".  Importing any of these
+          # kills the process and leaves a marker, so a silent shadow is not a
+          # way this step can pass.
+          mkdir -p decoy/receipts decoy/acceptor decoy/precedent
+          for n in receipts acceptor precedent; do
+            cat > "decoy/$n/__init__.py" <<EOF
+          import os
+          open(os.environ["DECOY_MARKER"], "a").write("$n imported\n")
+          raise SystemExit("DECOY $n was imported instead of the vendored copy")
+          EOF
+          done
+          cp decoy/receipts/__init__.py decoy/receipts.py
+          export DECOY_MARKER="$RUNNER_TEMP/decoy-marker"
+          PYTHONPATH="$PWD/decoy" .venv-bare/bin/python dist/precedent.pyz \
+            audit --share --state-dir "$RUNNER_TEMP/state" \
+            --claude-home "$RUNNER_TEMP/claude-home" | tail -2
+          if [ -e "$DECOY_MARKER" ]; then
+            echo "::error::the decoy on PYTHONPATH was imported"; exit 1
+          fi
+          PYTHONPATH="$PWD/decoy" .venv-bare/bin/python -c "
+          import sys; sys.path.insert(0, 'dist/precedent.pyz')
+          import receipts, acceptor, precedent
+          for m in (receipts, acceptor, precedent):
+              assert m.__file__.startswith('dist/precedent.pyz'), m.__file__
+              print('%-10s <- %s' % (m.__name__, m.__file__))"
+
+      - name: The archive wrote nothing under a Claude home
+        run: |
+          set -euo pipefail
+          for d in "$HOME/.claude" "$HOME/.precedent" "$CLAUDE_CONFIG_DIR"; do
+            if [ -e "$d" ]; then
+              echo "::error::precedent.pyz created or wrote $d"
+              exit 1
+            fi
+          done
+          echo "no Claude home was created."
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: precedent-pyz
+          path: dist/precedent.pyz
+          if-no-files-found: error
+
   extras:
     name: optional extras degrade gracefully
     runs-on: ubuntu-latest

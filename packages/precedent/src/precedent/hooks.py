@@ -157,10 +157,23 @@ sys.exit(P.guard_main("{event}", sys.argv[1:]))
 
 
 def plib_source() -> str:
-    """The body of ``_plib.py``: :mod:`precedent._hooklib`, byte for byte."""
+    """The body of ``_plib.py``: :mod:`precedent._hooklib`, byte for byte.
+
+    Read from the filesystem when there is one, and through
+    :mod:`importlib.resources` when there is not — inside ``precedent.pyz``
+    the module is an entry in a zip, ``__file__`` points at a path that does
+    not exist, and ``open()`` raises.  The hook scripts have to be installable
+    from the zipapp too, or the one-command bootstrap stops one command short
+    of the thing it exists for.
+    """
     here = os.path.join(os.path.dirname(os.path.abspath(__file__)), "_hooklib.py")
-    with open(here, "r", encoding="utf-8") as fh:
-        return fh.read()
+    try:
+        with open(here, "r", encoding="utf-8") as fh:
+            return fh.read()
+    except OSError:
+        from importlib.resources import files
+        return files(__package__).joinpath("_hooklib.py").read_text(
+            encoding="utf-8")
 
 
 def _esc(value: str) -> str:

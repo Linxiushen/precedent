@@ -24,6 +24,11 @@ fact that a correction miner will happily print your phone number into a report
 is itself worth knowing before you run `precedent mine --md` and paste the
 result anywhere.
 
+*A second, harmless difference:* this dossier was recorded when the reports
+were Chinese-only. Output is English by default now — every screen below is
+still exactly what you get with `--lang zh`, and the numbers, quotes, paths and
+verdicts are identical in either language. Only the frame moved.
+
 ## The hard rule this dossier was produced under
 
 > Nothing under the real `~/.claude` may be modified — not even `settings.json` —
@@ -2285,7 +2290,9 @@ declines — and says which of the two clauses failed, and how far it is from
 enough evidence. The candidate stays in `candidates.json` and becomes
 compilable the moment the tool is used a third time in this project.
 
-Test totals after the amendment: **receipts 71 · acceptor 112 · precedent 639**.
+Test totals after the amendment: **receipts 71 · acceptor 112 · precedent 639**
+— the count *at this point in the log*. Today's totals are in
+[README.md](README.md#tests); this file is a dated record, not a status page.
 
 ---
 

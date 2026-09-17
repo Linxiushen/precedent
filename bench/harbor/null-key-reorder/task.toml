@@ -1,0 +1,30 @@
+schema_version = "1.4"
+
+[task]
+name = "precedent/acceptorbench-null-key-reorder"
+version = "0.1.0"
+description = "Acceptor benchmark: frontmatter keys reordered"
+keywords = ["acceptor", "self-modifying-agents", "precedent", "null"]
+
+[[task.authors]]
+name = "The Precedent authors"
+
+[metadata]
+family = "null"
+variant = "key-reorder"
+artefact = "release-notes"
+incumbent_sha256 = "3c42c4f0729addc6f2f3fcfa0ab8bb4c6f067a1d3d1bde38dde05e3577308dc2"
+candidate_sha256 = "6b62fb92fe2f8d5619d0cc3129aaaea3607c698c18b0d832557953e73092cbc6"
+behaviour_identical = true
+declared_lift = 0.0
+source = "https://github.com/harbor-framework/harbor schema @ 3fc050a"
+
+[agent]
+timeout_sec = 600.0
+
+[verifier]
+timeout_sec = 120.0
+network_mode = "no-network"
+
+[environment]
+build_timeout_sec = 600.0

@@ -1,0 +1,30 @@
+schema_version = "1.4"
+
+[task]
+name = "precedent/acceptorbench-regression-over-generalisation"
+version = "0.1.0"
+description = "Acceptor benchmark: bounded step widened to 'all paths' — the 02:17 background-fork shape"
+keywords = ["acceptor", "self-modifying-agents", "precedent", "regression"]
+
+[[task.authors]]
+name = "The Precedent authors"
+
+[metadata]
+family = "regression"
+variant = "over-generalisation"
+artefact = "repo-cleanup"
+incumbent_sha256 = "69442132f6f0dd238d7a20ba88cf8051a17e7d7d8a0b9eacfc84ca50e943bb0d"
+candidate_sha256 = "68f6c9dd7ac8ced5cb29d6ccfb373001ccb1245956aa76c3848c562d168a99c1"
+behaviour_identical = false
+declared_lift = -0.25
+source = "https://github.com/harbor-framework/harbor schema @ 3fc050a"
+
+[agent]
+timeout_sec = 600.0
+
+[verifier]
+timeout_sec = 120.0
+network_mode = "no-network"
+
+[environment]
+build_timeout_sec = 600.0

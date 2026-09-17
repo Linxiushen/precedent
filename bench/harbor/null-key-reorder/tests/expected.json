@@ -1,0 +1,7 @@
+{
+  "artefact": "release-notes",
+  "decision": "reject",
+  "family": "null",
+  "note": "frontmatter keys reordered",
+  "variant": "key-reorder"
+}

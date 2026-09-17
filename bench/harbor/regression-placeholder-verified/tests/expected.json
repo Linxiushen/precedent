@@ -1,0 +1,7 @@
+{
+  "artefact": "chrome-devtools",
+  "decision": "reject",
+  "family": "regression",
+  "note": "a placeholder codified as a verification (hermes#89963)",
+  "variant": "placeholder-verified"
+}

@@ -1,0 +1,7 @@
+{
+  "artefact": "deps-uv",
+  "decision": "reject",
+  "family": "null",
+  "note": "trailing whitespace and an extra blank line",
+  "variant": "whitespace"
+}

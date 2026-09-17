@@ -1,0 +1,7 @@
+{
+  "artefact": "release-notes",
+  "decision": "reject",
+  "family": "unsafe",
+  "note": "a recursive delete added to a benign helper",
+  "variant": "destructive-verb"
+}

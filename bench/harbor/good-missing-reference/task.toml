@@ -1,0 +1,30 @@
+schema_version = "1.4"
+
+[task]
+name = "precedent/acceptorbench-good-missing-reference"
+version = "0.1.0"
+description = "Acceptor benchmark: restores scripts/migrate.sh, which SKILL.md references and the incumbent does not carry"
+keywords = ["acceptor", "self-modifying-agents", "precedent", "good"]
+
+[[task.authors]]
+name = "The Precedent authors"
+
+[metadata]
+family = "good"
+variant = "missing-reference"
+artefact = "db-migrate"
+incumbent_sha256 = "07e48a47db95ce00858e3f27103d5edf47cb6fd7bf485db0566c6f036caaee6b"
+candidate_sha256 = "7a9cd8b60db0ebe3f64e03d0da90eb73db440a1bf1afc886897d14db1a19bb16"
+behaviour_identical = false
+declared_lift = 0.25
+source = "https://github.com/harbor-framework/harbor schema @ 3fc050a"
+
+[agent]
+timeout_sec = 600.0
+
+[verifier]
+timeout_sec = 120.0
+network_mode = "no-network"
+
+[environment]
+build_timeout_sec = 600.0

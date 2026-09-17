@@ -71,6 +71,86 @@ else:                                                  # pragma: no cover
 
 
 # --------------------------------------------------------------------------
+# the documented fixture home: the same tree scripts/make_fixture_home.py
+# builds for the README, so the card in the README is the card under test
+# --------------------------------------------------------------------------
+
+_FIXTURE_SCRIPT = os.path.normpath(os.path.join(
+    os.path.dirname(__file__), "..", "..", "..", "scripts", "make_fixture_home.py"))
+
+if os.path.isfile(_FIXTURE_SCRIPT):
+    _fspec = importlib.util.spec_from_file_location("precedent_fixture_home",
+                                                    _FIXTURE_SCRIPT)
+    fixture_home_mod = importlib.util.module_from_spec(_fspec)
+    sys.modules["precedent_fixture_home"] = fixture_home_mod
+    _fspec.loader.exec_module(fixture_home_mod)
+else:                                                  # pragma: no cover
+    fixture_home_mod = None
+
+
+@pytest.fixture
+def demo_home(tmp_path):
+    """The README's Claude home, built under ``tmp_path``.
+
+    It deliberately contains the four things ``audit --share`` must never emit
+    — a credential, an email, a project name and a session id — so the
+    anonymisation tests have something real to fail on.
+    """
+    if fixture_home_mod is None:                       # pragma: no cover
+        pytest.skip("scripts/make_fixture_home.py not found")
+    root = str(tmp_path / "demo-claude")
+    fixture_home_mod.build(root, force=True)
+
+    class T:
+        pass
+    t = T()
+    t.home = os.path.realpath(root)
+    t.state_dir = str(tmp_path / "demo-state")
+    t.token = fixture_home_mod.PLANTED_TOKEN
+    t.email = fixture_home_mod.PLANTED_EMAIL
+    t.project_a = fixture_home_mod.PROJECT_A_SLUG
+    t.project_b = fixture_home_mod.PROJECT_B_SLUG
+    t.sessions = [fixture_home_mod.SESSION_1, fixture_home_mod.SESSION_2,
+                  fixture_home_mod.SESSION_3]
+    return t
+
+
+@pytest.fixture
+def hostile_home(tmp_path):
+    """The *adversarial* Claude home — ``make_fixture_home.py --hostile``.
+
+    ``demo_home`` doubles as the README's tree, so its shape is pinned by every
+    number in the docs and it cannot grow new plants freely.  This one has no
+    documentation duty: it carries one of every shape ``audit --share`` must
+    never emit — a credential, an AWS key, a phone number in two formats, an
+    email, a WeChat id, a home path, a Unix account name, a project *and* a
+    skill named after a paying customer, two session uuids and a git remote in
+    both syntaxes — each planted in a different kind of field.
+
+    ``t.plants`` is the ``[(what it is, literal)]`` list the tests iterate, so
+    widening the review means adding a line to the fixture script, not here.
+    """
+    if fixture_home_mod is None:                       # pragma: no cover
+        pytest.skip("scripts/make_fixture_home.py not found")
+    root = str(tmp_path / "hostile-claude")
+    fixture_home_mod.build_hostile(root, force=True)
+
+    class T:
+        pass
+    t = T()
+    t.home = os.path.realpath(root)
+    t.state_dir = str(tmp_path / "hostile-state")
+    t.plants = list(fixture_home_mod.HOSTILE_PLANTS)
+    t.company = fixture_home_mod.HOSTILE_COMPANY
+    t.slug = fixture_home_mod.HOSTILE_SLUG
+    t.sessions = [fixture_home_mod.HOSTILE_SESSION_1,
+                  fixture_home_mod.HOSTILE_SESSION_2]
+    t.skill = fixture_home_mod.HOSTILE_CLIENT_SKILL
+    t.token = fixture_home_mod.HOSTILE_TOKEN
+    return t
+
+
+# --------------------------------------------------------------------------
 # the mining tree
 # --------------------------------------------------------------------------
 
@@ -329,6 +409,25 @@ def stub_claude_binary(tmp_path, monkeypatch):
     (``monkeypatch.delenv``), and the ones that want a working shim overwrite it.
     """
     monkeypatch.setenv("PRECEDENT_CLAUDE_BIN", str(tmp_path / "no-such-claude"))
+
+
+@pytest.fixture(autouse=True)
+def neutral_language(monkeypatch):
+    """Pin the language so the suite does not depend on the runner's locale.
+
+    :func:`precedent.i18n.resolve` consults ``$PRECEDENT_LANG`` / ``$LC_ALL`` /
+    ``$LC_MESSAGES`` / ``$LANG``, so on a machine with ``LANG=zh_CN.UTF-8``
+    every English assertion here would fail — green on one laptop, red on
+    another, which is not a suite.  Each test therefore starts with those
+    unset and the process-wide language back at the default; the tests that
+    exercise detection pass an explicit ``environ=`` dict instead.
+    """
+    from precedent import i18n
+    for var in ("PRECEDENT_LANG", "LC_ALL", "LC_MESSAGES", "LANG"):
+        monkeypatch.delenv(var, raising=False)
+    i18n.set_lang(i18n.DEFAULT_LANG)
+    yield
+    i18n.set_lang(i18n.DEFAULT_LANG)
 
 
 @pytest.fixture

@@ -1,0 +1,7 @@
+{
+  "artefact": "fetch-changelog",
+  "decision": "reject",
+  "family": "regression",
+  "note": "injected rule tells the agent to use `curl`, which the artefact's own Rules section forbids",
+  "variant": "contradiction"
+}

@@ -123,7 +123,7 @@ def test_install_apply_then_a_whole_session_then_the_report(mining_home, tmp_pat
 
     # ---- the report: funnel, alarms, live receipts, spend -------------------
     md = str(tmp_path / "digest.md")
-    assert main(["report", "--md", md, "--quiet"] + args) == 0
+    assert main(["report", "--md", md, "--quiet", "--lang", "zh"] + args) == 0
     text = open(md, encoding="utf-8").read()
     assert "## 2. 漏斗" in text
     assert "① proposed" in text and "④ attributed" in text

@@ -13,16 +13,24 @@ JSON-serialisable so a decision can be paused and resumed across days.
 | `objectives` | `HardConstraints`, `MultiObjective` — mechanical gates before statistics; Pareto tie-break | PROCTOR rule: mechanical rejection overrides everything; fail-closed on missing metrics, missing denominators and non-finite values |
 | `ledger` | `Ledger`, `Certificate` — sha256 hash-chained JSONL; per-candidate anti-rewind checks; funnel proposed→accepted→activated→attributed | interior edits are detected by `verify_chain()`; tail truncation needs an anchor (`verify_chain(expected_head=…)`) |
 | `bench` | `AcceptorBench` — PACE's planted / stochastic regimes plus an **adversarial** regime | greedy ≈45 % false commits at zero lift; gates ≤ α; each protocol attack measured with the defence off and on |
+| `streams` | **labelled streams**: candidate edits over SKILL.md-shaped artefacts with sealed labels (`null` / `regression` / `unsafe` / `tamper` / `good`), a reference matcher, an oracle per family, and `score()` over any `Acceptor` | the `null` stream's ground truth is free: every commit there is false *by construction*, so any acceptor can report its own empirical false-commit rate forever |
 
 ## Install / test / bench
 
 ```bash
 cd packages/acceptor
 uv venv --python 3.12 .venv && uv pip install --python .venv/bin/python -e . pytest
-.venv/bin/python -m pytest                      # 112 tests, ~7 s
+.venv/bin/python -m pytest                      # 369 tests, ~7 s
 .venv/bin/python -m acceptor.bench --regime planted --n 40 --lift 0.2 --seeds 200
 .venv/bin/python -m acceptor.bench --regime stochastic --n 40 --t 10 --seeds 200 --schedule
 .venv/bin/python -m acceptor.bench --regime adversarial --seeds 300
+```
+
+The artefact-level half is driven from the `precedent` CLI, because scoring
+`precedent evaluate-bundle` needs that package:
+
+```bash
+cd ../precedent && .venv/bin/python -m precedent bench --all --seeds 200
 ```
 
 ## What the α guarantee actually requires
@@ -112,6 +120,79 @@ from acceptor import run_bench, run_adversarial
 print(run_bench(regime="planted", n=40, lift=0.3, seeds=100).table())
 print(run_adversarial(seeds=100).table())
 ```
+
+## Labelled streams: benchmarking the gate instead of the agent
+
+`bench` measures an acceptance *policy* over synthetic Bernoulli outcomes.
+`streams` measures an acceptance *layer* over real candidate edits, so that a
+gate which reads bytes (a lint, a scanner, a bundle evaluator, an LLM judge) can
+be scored on the same axes as one that reads numbers.
+
+The reason this is possible at all — and the reason an agent benchmark is not —
+is that **an acceptor is a classifier over candidate edits, so its ground truth
+can be planted**. The extreme case costs nothing:
+
+```python
+from acceptor import streams
+
+c = streams.make_candidate(streams.SEEDS[0], "null", "comment-only")
+assert streams.behaviour_identical(c.incumbent, c.candidate)   # a tie, by construction
+print(streams.verify_label(c))       # (True, 'behaviour-identical under the reference matcher')
+```
+
+Four `null` variants (byte-identical, whitespace-only, key-reordered,
+comment-only) are behaviour-identical to the incumbent under
+`behaviour_key`, which removes exactly four things — comments, trailing
+whitespace, runs of blank lines, frontmatter key order — and nothing else. Every
+commit on that stream is therefore a false commit with no human in the loop.
+This is the zero-stream self-calibration of 方案.md §3.3 L3 (Turnstile).
+
+The other four families cost one authoring pass each: `regression` (a directive
+that contradicts the artefact, an over-generalised step, a placeholder codified
+as verified), `unsafe` (credential exfiltration, a destructive verb, a new
+egress host, a dropped confirmation step), `tamper` (an edit that reaches the
+evaluator: a scorer path, a results file, a best-ever snapshot, a helper that
+writes the reward file) and `good` (a real defect repaired — here the
+*incumbent* is the defective bundle).
+
+Each family has an oracle that shares no code with its generator, and
+`verify_label` runs both directions: the property must hold of the candidate and
+must **not** already hold of the incumbent. `tests/test_streams.py` asserts that
+for all 6 × 17 = 102 candidates.
+
+Scoring any acceptor is one call:
+
+```python
+from acceptor import streams
+
+class MyGate:
+    name = "mine"
+    def accept(self, candidate, incumbent, budget):
+        if streams.behaviour_identical(candidate, incumbent):
+            return streams.Verdict("reject", "no effect")      # free
+        pairs = budget.draw_all()                              # costs evaluations
+        return streams.Verdict("commit" if sum(c for _, c in pairs) > 20 else "reject")
+
+res = streams.score(list(streams.reference_acceptors()) + [MyGate()], runs=50)
+print(res.table())
+```
+
+Reported per acceptor: false-commit rate (from `null`), commit rate per harmful
+family, missed-improvement rate (from `good`), evaluations per decision,
+milliseconds per decision, and a Pareto layer over the four of those that are
+minimised. Common random numbers: the paired outcomes for a candidate are drawn
+once and every acceptor gets its own `Budget` over the same tuple, so a
+difference between two rows is a difference between two policies.
+
+**Honest scope.** The artefacts, the edits and the labels are real; the paired
+outcomes are simulated from a declared per-family lift (`DEFAULT_LIFTS`), so a
+statistical row is real *given* an effect model. `tamper`'s declared lift is
+`+0.35` and its true lift is zero — the measurement moved because the
+measurement was edited — which is exactly why every statistics-only policy
+commits most of that family and only a mechanical check refuses. The
+`EVALUATOR_SURFACE` those edits reach is Harbor's published verifier layout, so
+the column measures coverage of a *known* contract rather than detection of an
+unknown attack.
 
 ## Design notes
 

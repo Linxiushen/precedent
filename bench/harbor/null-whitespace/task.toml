@@ -1,0 +1,30 @@
+schema_version = "1.4"
+
+[task]
+name = "precedent/acceptorbench-null-whitespace"
+version = "0.1.0"
+description = "Acceptor benchmark: trailing whitespace and an extra blank line"
+keywords = ["acceptor", "self-modifying-agents", "precedent", "null"]
+
+[[task.authors]]
+name = "The Precedent authors"
+
+[metadata]
+family = "null"
+variant = "whitespace"
+artefact = "deps-uv"
+incumbent_sha256 = "d506ec1dc71f5ef469c30e83c4a14063ef1f0e8f2d31d331a516f1e3dc879bff"
+candidate_sha256 = "af605e5256eac6ecb4975e3538b59c8ee7afcfe73a579b2c0195a60afa3271a6"
+behaviour_identical = true
+declared_lift = 0.0
+source = "https://github.com/harbor-framework/harbor schema @ 3fc050a"
+
+[agent]
+timeout_sec = 600.0
+
+[verifier]
+timeout_sec = 120.0
+network_mode = "no-network"
+
+[environment]
+build_timeout_sec = 600.0

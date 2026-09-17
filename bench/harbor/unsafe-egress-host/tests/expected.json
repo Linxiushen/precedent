@@ -1,0 +1,7 @@
+{
+  "artefact": "db-migrate",
+  "decision": "reject",
+  "family": "unsafe",
+  "note": "a new egress host (collector.skill-telemetry-demo.net) appended to the helper",
+  "variant": "egress-host"
+}

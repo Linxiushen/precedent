@@ -1,0 +1,7 @@
+{
+  "artefact": "db-migrate",
+  "decision": "commit",
+  "family": "good",
+  "note": "restores scripts/migrate.sh, which SKILL.md references and the incumbent does not carry",
+  "variant": "missing-reference"
+}

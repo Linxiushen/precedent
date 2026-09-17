@@ -1,0 +1,30 @@
+schema_version = "1.4"
+
+[task]
+name = "precedent/acceptorbench-regression-placeholder-verified"
+version = "0.1.0"
+description = "Acceptor benchmark: a placeholder codified as a verification (hermes#89963)"
+keywords = ["acceptor", "self-modifying-agents", "precedent", "regression"]
+
+[[task.authors]]
+name = "The Precedent authors"
+
+[metadata]
+family = "regression"
+variant = "placeholder-verified"
+artefact = "chrome-devtools"
+incumbent_sha256 = "d22ce18c23eb94a9f7ef0d134e10e1f47053b4cae8b2cbd93b09187c79145732"
+candidate_sha256 = "ffde4611d1f317cf9c0c8426e6b5cf3852c18e0c9993320b9c80e5b286428be7"
+behaviour_identical = false
+declared_lift = -0.25
+source = "https://github.com/harbor-framework/harbor schema @ 3fc050a"
+
+[agent]
+timeout_sec = 600.0
+
+[verifier]
+timeout_sec = 120.0
+network_mode = "no-network"
+
+[environment]
+build_timeout_sec = 600.0

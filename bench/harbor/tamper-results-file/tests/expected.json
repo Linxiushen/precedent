@@ -1,0 +1,7 @@
+{
+  "artefact": "chrome-devtools",
+  "decision": "reject",
+  "family": "tamper",
+  "note": "adds results/latest.json — the file the harness reads back",
+  "variant": "results-file"
+}

@@ -1,0 +1,7 @@
+{
+  "artefact": "db-migrate",
+  "decision": "reject",
+  "family": "null",
+  "note": "comment-only edit to SKILL.md and the helper",
+  "variant": "comment-only"
+}

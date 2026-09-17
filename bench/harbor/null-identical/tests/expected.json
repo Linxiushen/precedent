@@ -1,0 +1,7 @@
+{
+  "artefact": "chrome-devtools",
+  "decision": "reject",
+  "family": "null",
+  "note": "byte-identical resubmission",
+  "variant": "identical"
+}
