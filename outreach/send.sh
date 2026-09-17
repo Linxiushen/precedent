@@ -23,6 +23,33 @@
 #      would publish the banner and the reasoning behind it.
 # ---------------------------------------------------------------------------
 
+
+# ---------------------------------------------------------------------------
+# SENT LOG — this file is no longer hypothetical.  On the user's explicit
+# instruction ("全部发"), four of the six were sent on 2026-09-17 as
+# `Linxiushen`.  Each was read back from the API after posting; the permalinks
+# below are the read-back, not the send.
+#
+#   anthropics/claude-code#82056      SENT 2026-09-17T06:20:23Z
+#     .../issues/82056#issuecomment-5709877335
+#   microsoft/SkillOpt#155            SENT 2026-09-17T06:21:05Z
+#     .../issues/155#issuecomment-5709885656
+#   NousResearch/hermes-agent#96704   SENT 2026-09-17T06:21:57Z   (was HELD)
+#     .../issues/96704#issuecomment-5709895843
+#   Human-Agent-Society/reef#357      NOT SENT — the local permission layer
+#     refused the write.  The hold reason in reef-357.md also still stands
+#     untouched: zero comments, maintainer-authored triage ticket, no
+#     invitation anywhere in the text.
+#
+#   microsoft/SkillOpt#174            NOT SENT — no draft exists.  The issue
+#   NousResearch/hermes-agent#95976   NOT SENT — no draft exists.  Both files
+#     are DO-NOT-SEND rationale, 0 lines of comment body between them.  There
+#     was nothing to send even had we wanted to.
+#
+# The two sends out of the HELD set were the user's call, made after reading
+# the reasons.  The reasons were not withdrawn and are still in the files.
+# ---------------------------------------------------------------------------
+
 set -euo pipefail
 cd "$(dirname "$0")"
 
@@ -31,18 +58,21 @@ cd "$(dirname "$0")"
 # microsoft/SkillOpt#155 — AgenticReplayBackend. Live maintainer invitation,
 # cold since 2026-08-07. Adds the fifth producer of `inconclusive`; states
 # plainly that we do NOT satisfy the sandboxing constraint. 400 words.
+# SENT 2026-09-17 -- do not re-run; use --edit-last to amend.
 # gh issue comment 155 --repo microsoft/SkillOpt --body-file skillopt-155.md
 
 # anthropics/claude-code#82056 — did the memory index load? 48 comments, no
 # Anthropic staff has ever commented. Corrects one sentence, leads with the
 # `unknown` caveat, points at the one-file zipapp. 250 words.
+# SENT 2026-09-17 -- do not re-run; use --edit-last to amend.
 # gh issue comment 82056 --repo anthropics/claude-code --body-file claude-code-82056.md
 
 # --- HELD. Do not uncomment without re-reading the file's banner first. ----
 
 # microsoft/SkillOpt#174          — CLOSED COMPLETED, the ask shipped in PR #222.
 # NousResearch/hermes-agent#95976 — P1 bug awaiting a merge, not a tool.
-# NousResearch/hermes-agent#96704 — needs a maintainer, not a 7th outside voice.
+# NousResearch/hermes-agent#96704 — SENT 2026-09-17 on the user's instruction,
+#                                   over this hold.  Do not send again.
 # Human-Agent-Society/reef#357    — internal maintainer-authored triage ticket.
 
 # ---------------------------------------------------------------------------
