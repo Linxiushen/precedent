@@ -10,6 +10,6 @@ Against the three binding constraints, including where we are no use to you:
 
 One number for the tier policy, since it decides whether the expensive tier earns its budget: the cost of a wrong-but-accepted candidate. One of ours passed every structural check, and sweeping it over the user's own record priced it at 68 legitimate interruptions across 17,842 recorded tool calls. We retired it on that number alone. Re-scoped to one project it survived the structural checks, and then the gate returned INSUFFICIENT at 0/2, which is the common verdict here and the honest cost of refusing to guess.
 
-Offline, deterministic, zero model calls: github.com/Linxiushen/precedent (Apache-2.0, pre-release; N=1 machine, 8 sessions, one rule enforced live — not a multi-user study). Happy to write the INSUFFICIENT branch and its reason codes as a small draft PR if wanted, without touching the workspace-lifecycle slice.
+Offline, deterministic, zero model calls; N=1 machine, 8 sessions, one rule enforced live — not a multi-user study. (Correction to my own comment: the repository link I first posted here is not public, so I have removed it rather than leave a 404.) Happy to write the INSUFFICIENT branch and its reason codes as a small draft PR if wanted, without touching the workspace-lifecycle slice.
 
 AI-assistance disclosure: drafted with Claude Code under my authorization; every number was re-derived on my machine before posting.

@@ -4,13 +4,10 @@ After the fact it is buildable today, because Claude Code already writes the rec
 
 The caveat first, since this thread re-runs numbers. `unknown` is load-bearing and is the honest answer for most sessions: many carry only a couple of `prompt_snapshot` attachments, and calling those `not_loaded` would be a lie. It proves only that the text was in the rendered context, not that the model attended to it. It does not close proposal 1 — the running session still cannot know.
 
-Stdlib only; it never writes to the Claude home it reads. One file, nothing installed:
+Stdlib only; it never writes to the Claude home it reads.
 
-```
-curl -LO https://github.com/Linxiushen/precedent/releases/download/v0.1.0-rc2/precedent.pyz
-python3 precedent.pyz audit --share
-```
+Correction to my own comment: I originally linked a downloadable build here. That repository is not public, so I have removed the link rather than leave a dead one pointing at a 404. Apologies to anyone who clicked it in the last two hours.
 
-The card is counts-only: no quotes, paths, project names or session ids — useful if you are posting from a work machine. Source: github.com/Linxiushen/precedent (Apache-2.0, pre-release, one machine).
+Nothing above depends on the link. The method is the whole contribution — the two attachment types, the three-stage comparison (whole-body exact, then per-section, then a 200-character LCS for reflowed text), and the five states with `unknown` load-bearing. All of it is reproducible from the transcript format on your own disk.
 
 AI-assistance disclosure: drafted with Claude Code under my authorization; the limits stated are the package's own.
