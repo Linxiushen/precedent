@@ -800,14 +800,22 @@ Precedent 是一个**自进化的 Claude Code harness**，它的核心是一个*
 网络或 root：
 
 ```bash
-curl -LO https://github.com/Linxiushen/precedent/releases/latest/download/precedent.pyz
+curl -LO https://github.com/Linxiushen/precedent/releases/download/v0.1.0-rc1/precedent.pyz
 python3 precedent.pyz init          # 只读，约 5 秒打印首屏
 ```
 
-> **目前还没有打过 tag**，所以这个 URL 今天会 404。`release.yml` 会在第一个 `v*`
-> tag 上构建 `precedent.pyz`、验证两次构建一致、在空 venv 里跑一遍，然后连同
-> `.sha256` 一起挂到 release 上。在那之前，下面两条命令就是安装方式——它们和生成
-> release 资产的是同样两条命令。
+> **`v0.1.0-rc1` 是预发布版**，所以 `releases/latest/` 指不到它——要用上面这个带
+> 版本号的 URL。release 里有 `precedent.pyz`、它的 `.sha256` 和三个 wheel。PyPI
+> 上还没有：`release.yml` 在任何 `v*` tag 上都会构建并挂载资产，但只在**不带
+> `-后缀`** 的 tag 上发 PyPI——release candidate 按定义就是可能要收回的东西，而
+> PyPI 不支持收回。
+>
+> 校验下载：
+>
+> ```bash
+> curl -LO https://github.com/Linxiushen/precedent/releases/download/v0.1.0-rc1/precedent.pyz.sha256
+> shasum -a 256 -c precedent.pyz.sha256
+> ```
 
 `precedent.pyz` 是一个 zipapp，里面装着三个包，在任何装了 CPython **3.11+**
 的机器上都能直接跑。你也可以自己构建并与 release 对账：
