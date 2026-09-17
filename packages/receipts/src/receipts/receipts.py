@@ -174,21 +174,61 @@ class _SessionContext:
                 if e.path and os.path.normpath(e.path) == target]
 
 
-def _best_text_coverage(ctx: _SessionContext, body: str,
-                        candidates: list[int]) -> tuple[Coverage | None, Evidence | None]:
-    best: tuple[Coverage, Evidence] | None = None
+def _worst(statuses) -> str:
+    return max(statuses, key=lambda s: STATUS_ORDER[s])
+
+
+def _spread_note(seen_statuses, n: int) -> str:
+    cut = sum(1 for s in seen_statuses if s != "loaded_complete")
+    return (f"{n} deliveries of this file in this one session, {cut} of them "
+            f"incomplete — this status follows the WORST of them, not the best; "
+            f"the record cited below is the most complete one")
+
+
+def _best_text_coverage(ctx: _SessionContext, body: str, candidates: list[int],
+                        every: bool = False
+                        ) -> tuple[Coverage | None, Evidence | None,
+                                   str | None, str | None]:
+    """The delivery this receipt cites, the status it earns, and any spread.
+
+    A session can hold more than one ``instructions`` record for the same
+    file.  Every compaction re-reads it, a resume repeats the previous
+    delivery, and a file that grows mid-session is delivered at several
+    sizes.  Reported independently on win32 by DanceNitra in
+    anthropics/claude-code#82056 (2026-09-17) — one session there held eleven
+    records carrying three different cuts — and confirmed here: two sessions
+    on this machine carry ``MEMORY.md`` at two different lengths within the
+    one session.
+
+    Taking the *best* of several deliveries is not a neutral tie-break.  It
+    is the single choice that hides what this module exists to find: a
+    session whose index was truncated for most of its life reads
+    ``loaded_complete`` because one late delivery happened to be whole.  So
+    when the session really does hold several deliveries of this same file
+    (``every``), the status follows the worst of them and a note records the
+    spread, while the coverage numbers and the cited line still describe the
+    most complete one — that is what the citation points at.
+
+    ``every`` is false for the fallback sweep over unrelated
+    ``prompt_snapshot`` records.  Those are not deliveries of this file, so
+    the first complete match there is the right answer and stopping early is
+    both correct and much cheaper.
+    """
+    seen: list[tuple[Coverage, Evidence]] = []
     for i in candidates:
         cov = classify_text(body, ctx.hay(i))
-        ev = ctx.sess.evidence[i]
         if cov.status == "not_loaded":
             continue
-        if best is None or cov.chars_found > best[0].chars_found:
-            best = (cov, ev)
-        if cov.status == "loaded_complete":
+        seen.append((cov, ctx.sess.evidence[i]))
+        if cov.status == "loaded_complete" and not every:
             break
-    if best is None:
-        return None, None
-    return best
+    if not seen:
+        return None, None, None, None
+    best_cov, best_ev = max(seen, key=lambda t: t[0].chars_found)
+    statuses = [c.status for c, _ in seen]
+    if not every or len(set(statuses)) == 1:
+        return best_cov, best_ev, best_cov.status, None
+    return best_cov, best_ev, _worst(statuses), _spread_note(statuses, len(seen))
 
 
 def _receipt_for_memory_index(ctx: _SessionContext, art: Artifact,
@@ -210,21 +250,27 @@ def _receipt_for_memory_index(ctx: _SessionContext, art: Artifact,
     direct = ctx.for_path(art.path)
     candidates = direct or ctx.ordered()
     lines = [(e.line_no, e.raw) for e in entries]
-    best: tuple[Coverage, Evidence, list] | None = None
+    # Same correction as _best_text_coverage: several deliveries of the index
+    # in one session must not be collapsed to the most flattering one.
+    every = bool(direct)
+    seen: list[tuple[Coverage, Evidence, list]] = []
     for i in candidates:
         cov, missing = classify_lines(lines, ctx.hay(i))
-        ev = ctx.sess.evidence[i]
         if cov.units_found == 0:
             continue
-        if best is None or cov.units_found > best[0].units_found:
-            best = (cov, ev, missing)
-        if cov.status == "loaded_complete":
+        seen.append((cov, ctx.sess.evidence[i], missing))
+        if cov.status == "loaded_complete" and not every:
             break
-    if best is not None:
-        cov, ev, missing = best
+    if seen:
+        cov, ev, missing = max(seen, key=lambda t: t[0].units_found)
+        statuses = [c.status for c, _, _ in seen]
+        status = cov.status
+        if every and len(set(statuses)) > 1:
+            status = _worst(statuses)
+            notes = notes + [_spread_note(statuses, len(seen))]
         return ArtifactReceipt(
             sess.session_id, sess.started_at, art.id, art.kind, art.name, art.path,
-            cov.status, cov, ev.kind, ev.line_no, ev.ts, ev.source, notes,
+            status, cov, ev.kind, ev.line_no, ev.ts, ev.source, notes,
             [(n, t) for n, t in missing])
 
     if direct or sess.has_prompt_snapshot or sess.has_instructions:
@@ -299,10 +345,13 @@ def _receipt_for_text(ctx: _SessionContext, art: Artifact, sess: SessionData) ->
     body = art.body or art.content or ""
     direct = ctx.for_path(art.path)
     candidates = direct or ctx.ordered()
-    cov, ev = _best_text_coverage(ctx, body, candidates)
+    cov, ev, status, spread = _best_text_coverage(ctx, body, candidates,
+                                                  every=bool(direct))
     if cov is not None and ev is not None:
+        if spread:
+            notes = notes + [spread]
         return ArtifactReceipt(sess.session_id, sess.started_at, art.id, art.kind,
-                               art.name, art.path, cov.status, cov, ev.kind,
+                               art.name, art.path, status, cov, ev.kind,
                                ev.line_no, ev.ts, ev.source, notes)
     if direct:
         e = ctx.sess.evidence[direct[0]]
