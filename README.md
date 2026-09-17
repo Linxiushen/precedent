@@ -61,6 +61,22 @@ curl -LO https://github.com/Linxiushen/precedent/releases/download/v0.1.0-rc1/pr
 python3 precedent.pyz init          # read-only; prints the first screen in ~5 s
 ```
 
+If you already have [uv](https://docs.astral.sh/uv/), you can skip the download
+and run the current `main` without installing anything either:
+
+```bash
+uvx --from 'git+https://github.com/Linxiushen/precedent#subdirectory=packages/precedent' \
+    --with 'git+https://github.com/Linxiushen/precedent#subdirectory=packages/receipts' \
+    --with 'git+https://github.com/Linxiushen/precedent#subdirectory=packages/acceptor' \
+    precedent audit --share
+```
+
+The two `--with` lines are there because the three distributions are not on PyPI
+yet, so uv cannot resolve them by name. When they are, this collapses to
+`uvx precedent-cli audit --share` — and nothing else about the project changes,
+which is the point: **PyPI is packaging, not distribution.** The zipapp above is
+the supported path and needs no package manager at all.
+
 > **`v0.1.0-rc1` is a pre-release**, so `releases/latest/` does not point at it
 > — use the versioned URL above. It carries `precedent.pyz`, its `.sha256` and
 > the three wheels. Nothing is on PyPI: `release.yml` builds and attaches on any
