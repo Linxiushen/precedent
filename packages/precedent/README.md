@@ -37,11 +37,11 @@ Standard library only, so the shortest install is a download — one file that
 runs on any CPython 3.11+ with nothing on it:
 
 ```bash
-curl -LO https://github.com/Linxiushen/precedent/releases/download/v0.1.0-rc1/precedent.pyz
+curl -LO https://github.com/Linxiushen/precedent/releases/download/v0.1.0-rc2/precedent.pyz
 python3 precedent.pyz init
 ```
 
-(`v0.1.0-rc1` is a **pre-release**, so `releases/latest/` does not point at it —
+(`v0.1.0-rc2` is a **pre-release**, so `releases/latest/` does not point at it —
 use the versioned URL. Its `precedent.pyz` is
 `sha256:067613fb4b6c7c7365b6c9fc1dbe7c6c3abaa8e717cf39062c4e47e6a5eb7d92`, the
 same digest the build below produces on macOS and the same one the Ubuntu CI

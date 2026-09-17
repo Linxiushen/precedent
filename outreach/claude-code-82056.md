@@ -7,7 +7,7 @@ The caveat first, since this thread re-runs numbers. `unknown` is load-bearing a
 Stdlib only; it never writes to the Claude home it reads. One file, nothing installed:
 
 ```
-curl -LO https://github.com/Linxiushen/precedent/releases/download/v0.1.0-rc1/precedent.pyz
+curl -LO https://github.com/Linxiushen/precedent/releases/download/v0.1.0-rc2/precedent.pyz
 python3 precedent.pyz audit --share
 ```
 

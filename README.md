@@ -57,7 +57,7 @@ Everything here is **standard library only**, so the install is a download.
 One file, no pip, no venv, no network, no root:
 
 ```bash
-curl -LO https://github.com/Linxiushen/precedent/releases/download/v0.1.0-rc1/precedent.pyz
+curl -LO https://github.com/Linxiushen/precedent/releases/download/v0.1.0-rc2/precedent.pyz
 python3 precedent.pyz init          # read-only; prints the first screen in ~5 s
 ```
 
@@ -77,7 +77,7 @@ yet, so uv cannot resolve them by name. When they are, this collapses to
 which is the point: **PyPI is packaging, not distribution.** The zipapp above is
 the supported path and needs no package manager at all.
 
-> **`v0.1.0-rc1` is a pre-release**, so `releases/latest/` does not point at it
+> **`v0.1.0-rc2` is a pre-release**, so `releases/latest/` does not point at it
 > — use the versioned URL above. It carries `precedent.pyz`, its `.sha256` and
 > the three wheels. Nothing is on PyPI: `release.yml` builds and attaches on any
 > `v*` tag and publishes to PyPI only on a tag with no `-suffix`, because a
@@ -816,11 +816,11 @@ Precedent 是一个**自进化的 Claude Code harness**，它的核心是一个*
 网络或 root：
 
 ```bash
-curl -LO https://github.com/Linxiushen/precedent/releases/download/v0.1.0-rc1/precedent.pyz
+curl -LO https://github.com/Linxiushen/precedent/releases/download/v0.1.0-rc2/precedent.pyz
 python3 precedent.pyz init          # 只读，约 5 秒打印首屏
 ```
 
-> **`v0.1.0-rc1` 是预发布版**，所以 `releases/latest/` 指不到它——要用上面这个带
+> **`v0.1.0-rc2` 是预发布版**，所以 `releases/latest/` 指不到它——要用上面这个带
 > 版本号的 URL。release 里有 `precedent.pyz`、它的 `.sha256` 和三个 wheel。PyPI
 > 上还没有：`release.yml` 在任何 `v*` tag 上都会构建并挂载资产，但只在**不带
 > `-后缀`** 的 tag 上发 PyPI——release candidate 按定义就是可能要收回的东西，而
@@ -829,7 +829,7 @@ python3 precedent.pyz init          # 只读，约 5 秒打印首屏
 > 校验下载：
 >
 > ```bash
-> curl -LO https://github.com/Linxiushen/precedent/releases/download/v0.1.0-rc1/precedent.pyz.sha256
+> curl -LO https://github.com/Linxiushen/precedent/releases/download/v0.1.0-rc2/precedent.pyz.sha256
 > shasum -a 256 -c precedent.pyz.sha256
 > ```
 
