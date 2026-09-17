@@ -97,10 +97,36 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          gh release upload "$GITHUB_REF_NAME" \
+          tag="$GITHUB_REF_NAME"
+          # `gh release upload` fails with "release not found" on a tag that has
+          # no Release object, which is the normal state of a tag someone just
+          # pushed.  Create it first; anything with a `-suffix` is a candidate.
+          if ! gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            pre=""
+            case "$tag" in *-*) pre="--prerelease" ;; esac
+            gh release create "$tag" --repo "$GITHUB_REPOSITORY" $pre \
+              --title "$tag" --generate-notes
+          fi
+          gh release upload "$tag" \
             dist/precedent.pyz dist/precedent.pyz.sha256 \
             dist/*.whl \
             --repo "$GITHUB_REPOSITORY" --clobber
+
+      - name: The published checksum must verify against the published file
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          # GitHub's asset CDN caches by file name, so a --clobber of an asset
+          # that already existed can keep serving the old bytes.  That is worse
+          # than shipping no checksum at all: a reader following the README sees
+          # FAILED and reasonably concludes the download was tampered with.
+          # Download what the world will download, and check it.
+          tmp=$(mktemp -d)
+          gh release download "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" \
+            --pattern 'precedent.pyz*' --dir "$tmp"
+          (cd "$tmp" && sha256sum -c precedent.pyz.sha256)
+          echo "published checksum verifies against the published file."
 
   publish:
     name: publish to PyPI
