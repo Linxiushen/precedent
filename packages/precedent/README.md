@@ -37,13 +37,16 @@ Standard library only, so the shortest install is a download — one file that
 runs on any CPython 3.11+ with nothing on it:
 
 ```bash
-curl -LO https://github.com/Linxiushen/precedent/releases/latest/download/precedent.pyz
+curl -LO https://github.com/Linxiushen/precedent/releases/download/v0.1.0-rc1/precedent.pyz
 python3 precedent.pyz init
 ```
 
-(No tagged release yet, so that URL 404s today; `release.yml` attaches the file
-and its `.sha256` to the first `v*` tag. The two commands below are the install
-until then, and they are what produces the release asset.)
+(`v0.1.0-rc1` is a **pre-release**, so `releases/latest/` does not point at it —
+use the versioned URL. Its `precedent.pyz` is
+`sha256:067613fb4b6c7c7365b6c9fc1dbe7c6c3abaa8e717cf39062c4e47e6a5eb7d92`, the
+same digest the build below produces on macOS and the same one the Ubuntu CI
+runner produced, which is what "deterministic" is supposed to mean. Nothing is
+on PyPI yet.)
 
 Build the same file yourself (`--check` builds twice and compares, because the
 build is deterministic: sorted entries, fixed timestamps, fixed mode):
