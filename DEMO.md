@@ -1332,7 +1332,15 @@ swept 17842 recorded calls against 2 active rule(s) in 0.1s
   total interruptions this rule set would have caused: 121
 ```
 
-`replay_hook.py` is in the scratchpad, not the repo; the same chain is a
+`replay_hook.py` is now `scripts/replay_hook.py` in the repo — it was in the
+scratchpad when this was written, which made the number above impossible for a
+reader to re-derive.  Promoted on 2026-09-17 after @AfshinMirhamed asked, on
+NousResearch/hermes-agent#96704, what the metric actually measures and how to
+reproduce it.  It grew a `--since` flag in the same change: swept over the
+whole record the live scoped rule shows 27 fires, and every one of them predates
+the 2026-09-07T08:26:39Z correction that created it — `--since` with a bare date
+splits that as 13 after, `--since` with the timestamp splits it as 0, which is
+the true number.  The same chain is also a
 committed test — `test_demo_deny_path_on_a_throwaway_home` in
 `packages/precedent/tests/test_integration_enforce.py` runs install → deny →
 allow → 20 unrelated calls → uninstall on a synthetic home under `tmp_path`.
