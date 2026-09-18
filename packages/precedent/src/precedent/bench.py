@@ -473,10 +473,25 @@ def render_result(res: streams.StreamResult, extra: Mapping[str, Any]) -> str:
                                  for n, d in cold) + ".")
     rungs = (detail.get("precedent") or {}).get("rungs")
     if rungs:
+        # Printed in PIPELINE order and labelled by name, not by position.
+        # The dict is alphabetical, so the footer used to print the three
+        # `eprocess-*` rungs first and then say "the first three are free" --
+        # naming the paid rung as the free one, and reversing the whole point
+        # of the design for anyone who read the sentence against the list.
+        order = ["no-effect", "evaluator-reach", "mechanical"]
+        free = [(k, rungs[k]) for k in order if k in rungs]
+        paid = [(k, v) for k, v in sorted(rungs.items()) if k not in order]
         total = sum(rungs.values()) or 1
-        lines.append("precedent's rungs: " + ", ".join(
-            f"{k} {v} ({100 * v / total:.0f}%)" for k, v in rungs.items())
-            + " — the first three are free and deterministic.")
+        pct = lambda v: f"{100 * v / total:.0f}%"                # noqa: E731
+        free_sum = sum(v for _, v in free)
+        lines.append(
+            "precedent's rungs, in the order they run — free and "
+            "deterministic: "
+            + ", ".join(f"{k} {v} ({pct(v)})" for k, v in free)
+            + f" = {pct(free_sum)} disposed of without an evaluation"
+            + ("; then the paired e-process, where the money goes: "
+               + ", ".join(f"{k} {v} ({pct(v)})" for k, v in paid)
+               if paid else "") + ".")
     return "\n".join(lines)
 
 

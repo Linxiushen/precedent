@@ -515,3 +515,48 @@ def test_cli_emit_harbor(tmp_path, capsys, real_home_canary):
     assert "17 Harbor tasks" in out.err
     assert "null-identical" in out.out and "-> commit" in out.out
     real_home_canary()
+
+
+def test_the_documented_json_path_to_the_rungs_exists():
+    """paper/README.md tells a reader to read `acceptor_detail.precedent.rungs`.
+
+    It said `detail.precedent.rungs` — a path that does not exist, so anyone
+    following the paper to re-derive the rung split got a KeyError.  The top
+    level is config / decisions / elapsed_s / acceptors / labels_verified /
+    labels_failed / acceptor_detail.
+    """
+    import pathlib
+
+    res, extra = bench.run(runs=8, budget=20)
+    detail = extra.get("acceptor_detail") or {}
+    assert "precedent" in detail and "rungs" in detail["precedent"], sorted(extra)
+
+    paper = pathlib.Path(__file__).resolve().parents[3] / "paper" / "README.md"
+    if paper.exists():
+        text = paper.read_text(encoding="utf-8")
+        stripped = text.replace("acceptor_detail.precedent.rungs", "")
+        assert "detail.precedent.rungs" not in stripped, (
+            "paper/README.md still documents a JSON path that does not exist")
+
+
+def test_the_footer_does_not_call_the_paid_rung_free():
+    """The rung dict is alphabetical; the footer used to trust that order.
+
+    It printed the three `eprocess-*` rungs first and then said "the first
+    three are free and deterministic" — naming the one rung that costs an
+    evaluation as the free one, which inverts the whole design for anyone who
+    read the sentence against the list.
+    """
+    res, extra = bench.run(runs=8, budget=20)
+    text = bench.render_result(res, extra)
+    line = next((ln for ln in text.splitlines() if "rungs" in ln), None)
+    if line is None:                                  # pragma: no cover
+        pytest.skip("no rung footer in this run")
+    free_at = line.index("free and deterministic")
+    paid_at = line.index("where the money goes")
+    for name in ("no-effect", "evaluator-reach", "mechanical"):
+        assert free_at < line.index(name) < paid_at, (
+            f"{name} is free but is not printed under the free label: {line}")
+    for name in ("eprocess-accept", "eprocess-nsf", "eprocess-reject"):
+        assert line.index(name) > paid_at, (
+            f"{name} costs an evaluation but is printed as free: {line}")

@@ -62,7 +62,7 @@ Measured 2026-09-17: `71 passed in 2.33s`, `369 passed in 7.44s`, `1060 passed i
 | every statistics-only row commits **71–100 %** of `tamper` | same (`mcnemar` 93.1 %, `gate-ons` 71.4 %, `greedy` 100 %) | deterministic |
 | `precedent` **0 %** on all four wrong families at **5.8** evals/decision | same | deterministic |
 | `precedent` **52.2 %** missed improvements | same | deterministic |
-| rung split — no-effect 24 %, evaluator-reach 24 %, mechanical 29 %, e-process 24 % (so **77 %** disposed of free) | same, last line of the footer; or `--json` and read `detail.precedent.rungs` | deterministic |
+| rung split — no-effect 24 %, evaluator-reach 24 %, mechanical 29 %, e-process 24 % (so **77 %** disposed of free) | same, last line of the footer; or `--json` and read `acceptor_detail.precedent.rungs` | deterministic |
 | declared lifts (`null` +0.00 … `tamper` +0.35, `good` +0.25) | printed in the table header | deterministic |
 | **102** candidates, each re-verified by an independent oracle, **0** failed | same footer; `--streams` shows each variant and its oracle | deterministic |
 | `ms/dec` column, and the header's elapsed time | same | **machine-dependent** (M-series laptop, Python 3.12); the only non-portable digits in that table — re-running on 2026-09-17 moved `gate-fixed` from 0.036 to 0.034 ms/dec and nothing else |
