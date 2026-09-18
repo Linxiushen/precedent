@@ -102,8 +102,26 @@ def _reexec_into_a_newer_python():                  # pragma: no cover - guard
     import subprocess
     here = os.path.abspath(sys.argv[0])
     env = dict(os.environ, PRECEDENT_NO_REEXEC="1")
-    for name in ("python3.14", "python3.13", "python3.12", "python3.11"):
-        exe = shutil.which(name)
+    def _candidates():
+        # shutil.which returns the FIRST match per name.  When that first match
+        # is broken -- a dangling symlink into a removed pyenv/brew prefix, a
+        # shim that exits non-zero -- moving on to the next NAME skips every
+        # other python3.13 further down PATH.  Walk PATH per name instead, so
+        # one broken shim cannot hide a working interpreter behind it.
+        seen = set()
+        path = os.environ.get("PATH", "").split(os.pathsep)
+        for nm in ("python3.14", "python3.13", "python3.12", "python3.11"):
+            for d in path:
+                if not d:
+                    continue
+                cand = os.path.join(d, nm)
+                if cand in seen:
+                    continue
+                seen.add(cand)
+                if os.path.isfile(cand) and os.access(cand, os.X_OK):
+                    yield cand
+
+    for exe in _candidates():
         if not exe:
             continue
         try:

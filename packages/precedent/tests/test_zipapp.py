@@ -398,3 +398,44 @@ def test_the_reexec_cannot_loop(pyz):
     assert p.returncode == 2
     assert "needs Python 3.11 or newer" in p.stderr
     assert "uv python install" in p.stderr     # a command they can copy
+
+
+def test_a_broken_shim_does_not_hide_a_working_interpreter(tmp_path):
+    """`shutil.which` returns the first match per name — and that is the bug.
+
+    A dangling symlink into a removed pyenv prefix, or a shim that exits
+    non-zero, is a perfectly ordinary thing to have first on PATH.  The old
+    loop asked `shutil.which("python3.12")`, got the broken one, and on failure
+    moved to the next NAME — skipping every other python3.12 further down PATH.
+    A user with one stale shim got "no newer interpreter was found" while a
+    working 3.12 sat two directories away.
+    """
+    import os
+    import subprocess
+    import sys
+
+    old = _an_old_python()
+    if old is None:                                   # pragma: no cover
+        pytest.skip("no interpreter older than 3.11 on this machine")
+
+    broken, good = tmp_path / "broken", tmp_path / "good"
+    broken.mkdir(), good.mkdir()
+    shim = broken / "python3.12"
+    shim.write_text("#!/bin/sh\nexit 7\n", encoding="utf-8")
+    shim.chmod(0o755)
+    (good / "python3.12").symlink_to(sys.executable)
+
+    pyz = tmp_path / "p.pyz"
+    subprocess.run([sys.executable, BUILDER,
+                    "--out", str(pyz), "--quiet"], check=True)
+
+    env = dict(os.environ, PATH=f"{broken}{os.pathsep}{good}{os.pathsep}"
+                                + os.environ.get("PATH", ""))
+    env.pop("PRECEDENT_NO_REEXEC", None)
+    r = subprocess.run([old, str(pyz), "--version"],
+                       capture_output=True, text=True, env=env)
+    assert r.returncode == 0, r.stderr[-400:]
+    assert "precedent" in r.stdout, r.stdout
+    assert str(good) in r.stderr, (
+        "it did not re-exec into the working interpreter behind the broken "
+        "shim: " + r.stderr[-400:])
