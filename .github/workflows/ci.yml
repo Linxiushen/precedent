@@ -94,12 +94,42 @@ jobs:
         working-directory: plugins/openclaw
         run: npm ci
 
+      # Four tests drive the plugin against the REAL precedent CLI across a
+      # process boundary -- the one seam a fixture cannot stand in for.  They
+      # carry `{ skip: !existsSync(realCli) }`, and this job used to have no
+      # Python in it, so all four skipped every run and the job went green
+      # having never exercised the seam.  (The comment that used to live here
+      # said "the two tests"; there are four.)
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          cache-dependency-glob: "packages/*/pyproject.toml"
+
+      - name: Build the venv the seam tests look for
+        run: |
+          set -euo pipefail
+          uv venv --python 3.12 packages/precedent/.venv
+          uv pip install --python packages/precedent/.venv/bin/python \
+            -e packages/receipts -e packages/acceptor -e packages/precedent
+          packages/precedent/.venv/bin/precedent --version
+
       - name: tsc --noEmit, then both test suites
         working-directory: plugins/openclaw
-        # The suites spawn a real child process on a PATH containing only a
-        # fixture, so nothing here needs the precedent CLI; the two tests that
-        # do want it skip themselves when the repo venv is absent.
-        run: npm test
+        run: npm test 2>&1 | tee /tmp/npm-test.log
+
+      - name: No test may skip silently
+        run: |
+          set -euo pipefail
+          skipped=$(grep -oE '^ℹ skipped [0-9]+' /tmp/npm-test.log | grep -oE '[0-9]+$')
+          pass=$(grep -oE '^ℹ pass [0-9]+' /tmp/npm-test.log | grep -oE '[0-9]+$')
+          echo "pass=$pass skipped=$skipped"
+          if [ "$skipped" != "0" ]; then
+            echo "::error::$skipped test(s) skipped — the seam tests skip when the"
+            echo "::error::precedent venv is missing, which is how this job stayed"
+            echo "::error::green for weeks without ever crossing the process boundary."
+            exit 1
+          fi
+          test "$pass" -ge 94
 
       - name: Assert the plugin suite touched no real Claude home
         run: |

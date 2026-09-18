@@ -134,13 +134,15 @@ def test_alarm_hook_errors_are_never_silent(state):
                 {"event": "regex_quarantined", "ts": "2026-09-15T09:00:02Z"}])
     a = _alarm_codes(state)["HOOK"]
     assert "JSONDecodeError" in a["message"]
-    assert "1 次 precedents.json 读不出" in a["message"]
+    # English is the documented default; the alarms used to be hard-coded
+    # Chinese and printed as-is under --lang en.
+    assert "1 unreadable precedents.json" in a["message"]
 
 
 def test_alarm_confirmed_but_not_installed(state):
     state.write_precedents([RULE])
     a = _alarm_codes(state)["NOT_INSTALLED"]
-    assert "强制执行 = 0" in a["message"]
+    assert "enforcement is 0" in a["message"]
     assert a["action"].startswith("precedent hooks install")
 
 
@@ -154,7 +156,7 @@ def test_alarm_no_fires_in_fourteen_days(state):
     state.write_json(state.install_receipt_path, receipt)
     log(state, [{"event": "allow", "ts": "2026-09-14T10:00:00Z"}] * 40)
     a = _alarm_codes(state)["NO_FIRES"]
-    assert "30 天" in a["message"] and "40 次钩子调用" in a["message"]
+    assert "30 days ago" in a["message"] and "40 hook calls" in a["message"]
     # one fire and the alarm goes away
     log(state, [{"event": "deny", "rule": "p-aaa", "ts": "2026-09-14T11:00:00Z"}])
     assert "NO_FIRES" not in _alarm_codes(state)

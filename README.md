@@ -58,7 +58,7 @@ One file, no pip, no venv, no network, no root:
 
 ```bash
 curl -LO https://github.com/Linxiushen/precedent/releases/download/v0.1.0-rc2/precedent.pyz
-python3 precedent.pyz init          # read-only; prints the first screen in ~5 s
+python3 precedent.pyz init          # never writes your Claude home; first screen in ~5 s
 ```
 
 If you already have [uv](https://docs.astral.sh/uv/), you can skip the download
@@ -267,14 +267,24 @@ Claude home.
 > fingerprint of `~/.claude` with every changed file attributed. It ends with the
 > three-command runbook for turning enforcement on yourself.
 
-### 1. `precedent init` — what is actually in there (10 s, read-only)
+### 1. `precedent init` — what is actually in there (10 s, never writes your Claude home)
+
+> **What "never writes your Claude home" does and does not mean.** It is the
+> guarantee the whole tool rests on and it is enforced by a canary fixture in
+> every test: nothing under `~/.claude` is created, modified or deleted by any
+> command except `hooks install|uninstall --apply`, which backs the file up
+> first. It does **not** mean the command writes nothing at all — `init`
+> creates its own state directory (`~/.precedent` by default) with
+> `config.json`, `ledger.jsonl`, and directories for scans, receipts,
+> snapshots, blobs, backups and hooks. Everything it writes is under that one
+> directory, and `--state-dir` moves it.
 
 ```bash
 precedent init
 ```
 
 ```
-precedent 0.1.0 — first screen (read-only, zero model calls)
+precedent 0.1.0 — first screen (never writes your Claude home, zero model calls)
 ──────────────────────────────────────────────────────────────
  1. Claude home        : /Users/you/.claude
  2. state dir          : /Users/you/.precedent

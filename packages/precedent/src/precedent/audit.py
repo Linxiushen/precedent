@@ -33,6 +33,7 @@ import json
 import os
 from datetime import datetime, timedelta, timezone
 
+from .i18n import t
 from .docket import STARVATION_DAYS, starving
 from .llm import total_spend
 from .ownership import GUARD_RULE_ID
@@ -303,37 +304,47 @@ def alarms(state, entries: list[dict], fun: dict, health: dict,
         oldest = max((e.get("ageDays") or 0) for e in starved)
         out.append({
             "code": "PENDING", "level": "STARVATION",
-            "message": f"{len(starved)} 条 docket 条目等待 ≥{STARVATION_DAYS} 天"
-                       f"（最老 {oldest} 天）：{', '.join(e['id'] for e in starved[:5])}",
+            "message": t("alarm.pending", n=len(starved), days=STARVATION_DAYS,
+                         oldest=oldest,
+                         ids=", ".join(e["id"] for e in starved[:5])),
             "action": "precedent docket --batch"})
     if health["errors"] or health["unreadable"] or health["quarantined"]:
         last = (health.get("lastError") or {}).get("error", "")
         out.append({
             "code": "HOOK", "level": "STARVATION",
-            "message": f"钩子日志里有 {health['errors']} 个异常、"
-                       f"{health['unreadable']} 次 precedents.json 读不出、"
-                       f"{health['quarantined']} 次正则隔离"
-                       + (f"；最近一次：{last[:120]}" if last else ""),
+            "message": t("alarm.hook", errors=health["errors"],
+                         unreadable=health["unreadable"],
+                         quarantined=health["quarantined"])
+                       + (t("alarm.hook.last", last=last[:120]) if last else ""),
             "action": f"tail {state.hooklog_path}"})
     n_active = len(fun["accepted"]["rules"])
     if n_active and not fun["installed"]:
         out.append({
             "code": "NOT_INSTALLED", "level": "STARVATION",
-            "message": f"{n_active} 条已确认的先例，但 settings.json 里没有我们的钩子"
-                       f"——强制执行 = 0",
+            "message": t("alarm.not_installed", n=n_active),
             "action": "precedent hooks install claude-code   # 然后 --apply"})
-    elif n_active and fun["installed"] and health["fires"] == 0:
+    elif n_active and fun["installed"]:
+        # `fires` is a LIFETIME count over the whole hook log, so gating on
+        # `fires == 0` made this a one-shot latch: once a rule had fired even
+        # once, ever, the alarm could never speak again -- and the message it
+        # would have printed already claimed a window ("nothing in N days")
+        # that the condition never checked.  On this machine one rule fired
+        # once, on 2026-09-16, and the dead-rule alarm has been permanently
+        # off ever since.  `daysSinceFire` was computed and unused.
         since = _parse((hooks_status.get("receipt") or {}).get("installedAt"))
         age = (now - since).days if since else None
-        if age is None or age >= NO_FIRE_DAYS:
+        quiet = health.get("daysSinceFire")
+        never = health["fires"] == 0 and (age is None or age >= NO_FIRE_DAYS)
+        gone_quiet = quiet is not None and quiet >= NO_FIRE_DAYS
+        if never or gone_quiet:
+            msg = (t("alarm.no_fires.never", n=n_active, calls=health["calls"],
+                     age=(t("alarm.no_fires.age", n=age) if age is not None else ""))
+                   if never else
+                   t("alarm.no_fires.quiet", n=n_active, quiet=quiet,
+                     days=NO_FIRE_DAYS, calls=health["calls"]))
             out.append({
-                "code": "NO_FIRES", "level": "STARVATION",
-                "message": f"{n_active} 条 active 规则已安装"
-                           + (f" {age} 天" if age is not None else "")
-                           + f"，但 {NO_FIRE_DAYS} 天内一次都没触发"
-                             f"（共 {health['calls']} 次钩子调用）——"
-                             f"要么 agent 真的改了，要么规则匹配不到现实",
-                "action": "precedent report --md digest.md  # 看 funnel 一节"})
+                "code": "NO_FIRES", "level": "STARVATION", "message": msg,
+                "action": "precedent report --md digest.md  # see the funnel section"})
     # A machine that never ran `hooks install` and has nothing to enforce has
     # not *drifted*; it is simply not set up yet, and calling that an alarm on
     # somebody's first run teaches them to ignore the alarm list.  The moment
@@ -344,8 +355,8 @@ def alarms(state, entries: list[dict], fun: dict, health: dict,
     if hooks_status.get("drift") and not never_installed:
         out.append({
             "code": "DRIFT", "level": "STARVATION",
-            "message": f"安装漂移 {len(hooks_status['drift'])} 项："
-                       + "；".join(hooks_status["drift"][:3]),
+            "message": t("alarm.drift", n=len(hooks_status["drift"]),
+                         items="; ".join(hooks_status["drift"][:3])),
             "action": "precedent hooks status"})
     return out
 

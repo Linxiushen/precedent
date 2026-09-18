@@ -170,8 +170,12 @@ def plural(n: int, key: str, lang: str | None = None) -> str:
 STRINGS: dict[str, dict[str, str]] = {
     # ---- init: the ten-line first screen ---------------------------------
     "init.title": {
-        "en": "precedent {version} — first screen (read-only, zero model calls)",
-        "zh": "precedent {version} — 首屏（只读，零模型调用）"},
+        # "read-only" on its own read as "writes nothing"; it only ever meant
+        # "never writes your Claude home".  `init` does create <state> and
+        # write a scan archive there, so the word had to name its object.
+        "en": "precedent {version} — first screen "
+              "(never writes your Claude home, zero model calls)",
+        "zh": "precedent {version} — 首屏（绝不写你的 Claude home，零模型调用）"},
     "init.label.home": {"en": "Claude home", "zh": "Claude home"},
     "init.label.state": {"en": "state dir", "zh": "状态目录"},
     "init.label.sessions": {"en": "sessions", "zh": "会话"},
@@ -207,6 +211,37 @@ STRINGS: dict[str, dict[str, str]] = {
     # ---- docket: the markdown frame.  README promises the frame is
     # translated and only quoted user text stays as written; render_docket and
     # render_batch were emitting 64 Chinese lines under `--lang en`.
+    # ---- audit alarms.  All five were hard-coded Chinese and printed as-is
+    # under `--lang en`; they simply never showed up in an English test run
+    # because a machine with no alarms prints "alarms: none".
+    "alarm.pending": {
+        "en": "{n} docket entries have waited ≥{days} days (oldest {oldest}): {ids}",
+        "zh": "{n} 条 docket 条目等待 ≥{days} 天（最老 {oldest} 天）：{ids}"},
+    "alarm.hook": {
+        "en": "the hook log carries {errors} exception(s), {unreadable} "
+              "unreadable precedents.json, {quarantined} regex quarantine(s)",
+        "zh": "钩子日志里有 {errors} 个异常、{unreadable} 次 precedents.json "
+              "读不出、{quarantined} 次正则隔离"},
+    "alarm.hook.last": {"en": "; most recent: {last}", "zh": "；最近一次：{last}"},
+    "alarm.not_installed": {
+        "en": "{n} confirmed precedents, but settings.json carries none of our "
+              "hooks — enforcement is 0",
+        "zh": "{n} 条已确认的先例，但 settings.json 里没有我们的钩子——强制执行 = 0"},
+    "alarm.no_fires.never": {
+        "en": "{n} active rule(s) installed{age}, and not one has ever fired "
+              "({calls} hook calls) — either the agent really changed, or the "
+              "rules do not match reality",
+        "zh": "{n} 条 active 规则已安装{age}，一次都没触发过（共 {calls} 次钩子"
+              "调用）——要么 agent 真的改了，要么规则匹配不到现实"},
+    "alarm.no_fires.quiet": {
+        "en": "{n} active rule(s) installed, last fired {quiet} days ago — "
+              "nothing in {days} days ({calls} hook calls). A rule that has "
+              "gone quiet is not the same as a rule that works",
+        "zh": "{n} 条 active 规则已安装，上次触发在 {quiet} 天前——已有 {days} "
+              "天没动静（共 {calls} 次钩子调用）。安静的规则不等于有效的规则"},
+    "alarm.no_fires.age": {"en": " {n} days ago", "zh": " {n} 天"},
+    "alarm.drift": {"en": "install drift, {n} item(s): {items}",
+                    "zh": "安装漂移 {n} 项：{items}"},
     "docket.write.evidence": {
         "en": "{agent} write via {tool} ({how}) → {governed} artifact",
         "zh": "{agent} 经由 {tool} 写入（{how}）→ {governed} 工件"},
