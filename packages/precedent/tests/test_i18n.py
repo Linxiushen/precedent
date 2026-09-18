@@ -166,3 +166,78 @@ def test_the_evidence_is_byte_identical_in_both_languages(cli, capsys):
                      "stop using curl, use httpie instead"):
         assert evidence in en and evidence in zh, evidence
     assert "corrections detected" in en and "检出纠正" in zh
+
+
+# --------------------------------------------------------------------------
+# the table being clean is not the same as the output being clean
+# --------------------------------------------------------------------------
+
+def _ascii_only_state(tmp_path):
+    """A state whose every user-supplied string is ASCII.
+
+    That is the whole trick.  README promises the *frame* is translated and
+    only quoted user text stays as written, so on a corpus with no Chinese in
+    it, any Chinese left in `--lang en` output is frame by construction — no
+    judgement call, no allow-list to rot.
+    """
+    import json
+
+    from precedent.state import StateDir
+    st = StateDir(str(tmp_path / "state"), claude_home=str(tmp_path / "home"))
+    st.ensure()
+    rule = {
+        "schemaVersion": 1, "id": "p-aaaabbbb", "hook": "PreToolUse",
+        "tool": "Bash", "match": "all", "action": "deny", "scope": "global",
+        "status": "candidate", "message": "do not use headless",
+        "topic": "t-1", "quote": "please use my main browser",
+        "quoteDate": "2026-09-07",
+        "matchers": [{"type": "input_regex", "field": "command",
+                      "regex": "(?i)headless"}],
+        "birth": {"gate": "temporal-birth-gate/v1", "verdict": "PASS",
+                  "counts": "hit 1/1 - after-t0 false 0/50",
+                  "t0": "2026-09-01T00:00:00Z", "hit": True},
+    }
+    with open(st.path("candidates.json"), "w", encoding="utf-8") as fh:
+        json.dump({"schemaVersion": 1, "candidates": [rule]}, fh)
+    return st
+
+
+@pytest.mark.parametrize("renderer", ["render_docket", "render_batch"])
+def test_english_output_carries_no_chinese_frame(tmp_path, renderer):
+    """The test that was missing while `docket --lang en` printed 64 Chinese lines.
+
+    The old test walked STRINGS and asserted no English entry contained
+    Chinese.  Every leak it missed was hard-coded in the renderer and never
+    reached the table at all, so the table was spotless and the output was not.
+    """
+    from precedent import docket, i18n
+
+    st = _ascii_only_state(tmp_path)
+    entries = docket.build_entries(st)
+    prev = i18n.get_lang()
+    try:
+        i18n.set_lang("en")
+        out = getattr(docket, renderer)(st, entries)
+    finally:
+        i18n.set_lang(prev)
+    bad = [ln for ln in out.splitlines() if any("一" <= c <= "鿿" for c in ln)]
+    assert not bad, (
+        f"{renderer} printed Chinese under --lang en, and the corpus has none:\n"
+        + "\n".join(bad[:8]))
+
+
+@pytest.mark.parametrize("renderer", ["render_docket", "render_batch"])
+def test_chinese_output_is_not_regressed_into_english(tmp_path, renderer):
+    """Translating the frame must not leave `--lang zh` speaking English."""
+    from precedent import docket, i18n
+
+    st = _ascii_only_state(tmp_path)
+    entries = docket.build_entries(st)
+    prev = i18n.get_lang()
+    try:
+        i18n.set_lang("zh")
+        out = getattr(docket, renderer)(st, entries)
+    finally:
+        i18n.set_lang(prev)
+    assert any("一" <= c <= "鿿" for c in out), (
+        f"{renderer} under --lang zh printed no Chinese at all")

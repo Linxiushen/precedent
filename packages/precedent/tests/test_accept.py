@@ -310,8 +310,8 @@ def test_the_batch_digest_lists_proposals(tmp_path):
     accept_outcomes(st, _cand(), _pairs([(0, 1)] * 12), surface="skill",
                     declared_paths=["/tmp/p/SKILL.md"])
     md = render_batch(st, build_entries(st))
-    assert "提案" in md
-    assert "永远不会自动应用" in md
+    assert "## Proposals" in md
+    assert "never auto-applied" in md
 
 
 # --------------------------------------------------------------------------

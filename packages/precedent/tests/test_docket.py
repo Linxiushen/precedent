@@ -91,7 +91,11 @@ def test_entries_carry_the_gate_counts_and_the_diff(state):
     rule = by_id["p-1a2b3c4d"]
     assert rule["kind"] == "rule" and rule["status"] == "pending"
     assert rule["gateVerdict"] == "PASS" and "命中 2/2" in rule["gateCounts"]
-    assert any("原话" in e for e in rule["evidence"])
+    # English is the documented default: the frame is translated, the quoted
+    # user text is not.  Both halves asserted, because translating the quote
+    # would be the other way to break this.
+    quote_line = next(e for e in rule["evidence"] if e.startswith("verbatim ("))
+    assert RULE_CANDIDATE["quote"] in quote_line
     assert "pip install" in rule["diff"]
     assert rule["ageDays"] == 14
 
@@ -106,15 +110,15 @@ def test_the_docket_renders_evidence_and_the_three_verbs(state):
     md = render_docket(state, build_entries(state, now=NOW), now=NOW)
     assert "p-1a2b3c4d" in md and "+12 −3 lines" in md
     assert "docket confirm" in md and "reject" in md and "snooze" in md
-    assert f"STARVATION：2 条已经等了 ≥{STARVATION_DAYS} 天" in md   # the two rules
+    assert f"STARVATION: 2 have waited ≥{STARVATION_DAYS} days" in md  # the two rules
 
 
 def test_batch_digest_is_one_screen(state):
     md = render_batch(state, build_entries(state, now=NOW), now=NOW)
     assert "batch digest" in md
-    assert "## 规则候选" in md and "## 治理树写入" in md
+    assert "## Rule candidates" in md and "## Writes to the governed tree" in md
     assert "p-1a2b3c4d" in md and "night-fork" not in md   # compact, not verbose
-    assert "子代理 1" in md
+    assert "1 from subagents" in md
 
 
 # --------------------------------------------------------------------------

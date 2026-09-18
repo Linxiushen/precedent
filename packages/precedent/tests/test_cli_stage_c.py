@@ -257,7 +257,7 @@ def test_improve_proposals_show_up_in_the_docket(tmp_path, stage_c_home,
                "--state-dir", state_dir])
     assert rc == 0
     out = capsys.readouterr().out
-    assert "提案" in out and "永远不会自动应用" in out
+    assert "## Proposals" in out and "never auto-applied" in out
 
 
 # --------------------------------------------------------------------------

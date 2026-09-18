@@ -204,6 +204,63 @@ STRINGS: dict[str, dict[str, str]] = {
     "init.ledger": {
         "en": "ledger {path} (hash-chained, {n} {record_w}, chain {ok})",
         "zh": "账本 {path}（哈希链，{n} {record_w}，校验 {ok}）"},
+    # ---- docket: the markdown frame.  README promises the frame is
+    # translated and only quoted user text stays as written; render_docket and
+    # render_batch were emitting 64 Chinese lines under `--lang en`.
+    "docket.write.evidence": {
+        "en": "{agent} write via {tool} ({how}) → {governed} artifact",
+        "zh": "{agent} 经由 {tool} 写入（{how}）→ {governed} 工件"},
+    "docket.gate": {"en": "birth gate {verdict}", "zh": "出生门 {verdict}"},
+    "docket.quote": {"en": "verbatim ({date}): {quote}",
+                     "zh": "原话（{date}）：{quote}"},
+    "docket.title": {"en": "# precedent docket — {n} pending",
+                     "zh": "# precedent docket — {n} 条待办"},
+    "docket.title.snoozed": {"en": ", {n} snoozed", "zh": "，{n} 条已推迟"},
+    "docket.generated": {"en": "generated {ts} · state `{state}`",
+                         "zh": "生成于 {ts} · state `{state}`"},
+    "docket.starvation": {
+        "en": "**STARVATION: {n} have waited ≥{days} days** — {ids}",
+        "zh": "**STARVATION：{n} 条已经等了 ≥{days} 天** — {ids}"},
+    "docket.empty": {
+        "en": "(Empty. `precedent mine` finds corrections; `precedent hooks "
+              "install claude-code --apply` starts recording writes to the "
+              "governed tree.)",
+        "zh": "（空。`precedent mine` 找纠正，`precedent hooks install "
+              "claude-code --apply` 让所有权钩子开始记录治理树里的写入。）"},
+    "docket.age": {"en": "{n} days ago", "zh": "{n} 天前"},
+    "docket.raised": {"en": "- raised {ts}  {age}", "zh": "- 提出于 {ts}  {age}"},
+    "docket.actions": {
+        "en": "  `precedent docket confirm {id}` · `reject {id} --reason …` · "
+              "`snooze {id}` ({days} days)",
+        "zh": "  `precedent docket confirm {id}` · `reject {id} --reason …` · "
+              "`snooze {id}`（{days} 天）"},
+    "docket.batch.counts": {
+        "en": "{ts} · {n} pending (rules {rules} / writes {writes} / "
+              "proposals {props})",
+        "zh": "{ts} · {n} 条待办（规则 {rules} / 写入 {writes} / 提案 {props})"},
+    "docket.batch.starved": {"en": " · **{n} ≥{days} days**",
+                             "zh": " · **{n} 条 ≥{days} 天**"},
+    "docket.batch.rules": {"en": "## Rule candidates", "zh": "## 规则候选"},
+    "docket.batch.rules.head": {"en": "| id | birth gate | evidence | what |",
+                                "zh": "| id | 出生门 | 证据 | 说明 |"},
+    "docket.batch.writes": {"en": "## Writes to the governed tree",
+                            "zh": "## 治理树写入"},
+    "docket.batch.writes.n": {
+        "en": "- {total} in total: {sub} from subagents, {asks} of them stopped to ask",
+        "zh": "- 共 {total} 条：子代理 {sub}，其中被拦下询问 {asks}"},
+    "docket.batch.writes.dist": {"en": "- by tree: {dist}", "zh": "- 分布：{dist}"},
+    "docket.batch.writes.head": {"en": "| id | agent | path | diff | owner |",
+                                 "zh": "| id | agent | 路径 | diff | owner |"},
+    "docket.batch.props": {
+        "en": "## Proposals (examiner / nightly improver) — **never auto-applied**",
+        "zh": "## 提案（examiner / 夜间改进器）——**永远不会自动应用**"},
+    "docket.batch.props.head": {"en": "| id | surface | verdict | evidence | paths |",
+                                "zh": "| id | surface | 判定 | 证据 | 路径 |"},
+    "docket.batch.none": {"en": "(Nothing pending.)", "zh": "（没有待办。）"},
+    "docket.batch.footer": {
+        "en": "Confirm / reject / snooze: `precedent docket "
+              "confirm|reject|snooze <id>`",
+        "zh": "确认/拒绝/推迟：`precedent docket confirm|reject|snooze <id>`"},
     "init.ok": {"en": "ok", "zh": "ok"},
     "init.failed": {"en": "BROKEN", "zh": "失败"},
     "init.live": {

@@ -35,6 +35,8 @@ from . import SCHEMA_VERSION, __version__
 from .ownership import read_write_candidates, summarise_candidates
 from .proposals import read_proposals
 from .rules import RuleError, validate_rule
+from . import i18n
+from .i18n import t
 from .state import now_iso
 
 __all__ = [
@@ -108,16 +110,17 @@ def _rule_entry(cand: dict, decisions: dict, now: datetime) -> dict:
     age = (now - _parse(created)).days if _parse(created) else None
     evidence = []
     if gate:
-        evidence.append(f"出生门 {gate.get('verdict', '?')} "
-                        f"{_VERDICT_MARK.get(gate.get('verdict'), '')} — "
-                        f"{gate.get('counts', 'n/a')}")
+        evidence.append(t("docket.gate", verdict=gate.get("verdict", "?"))
+                        + f" {_VERDICT_MARK.get(gate.get('verdict'), '')} — "
+                        + f"{gate.get('counts', 'n/a')}")
         for k in ("t0", "hit", "quietAfter", "before"):
             if gate.get(k):
                 evidence.append(f"{k}: {gate[k]}")
         for f in (gate.get("failures") or [])[:3]:
             evidence.append(f"✗ {f}")
     if cand.get("quote"):
-        evidence.append(f"原话（{cand.get('quoteDate', '?')}）：{cand['quote']}")
+        evidence.append(t("docket.quote", date=cand.get("quoteDate", "?"),
+                          quote=cand["quote"]))
     if cand.get("topics"):
         evidence.append("topics: " + ", ".join(cand["topics"]))
     if cand.get("origin"):
@@ -148,8 +151,8 @@ def _write_entry(rec: dict, decisions: dict, now: datetime) -> dict:
     snap = rec.get("snapshot") or {}
     diff = rec.get("diff") or {}
     evidence = [
-        f"{rec.get('agent')} write via {rec.get('tool')} ({rec.get('how')}) "
-        f"→ {rec.get('governed')} 工件",
+        t("docket.write.evidence", agent=rec.get("agent"), tool=rec.get("tool"),
+          how=rec.get("how"), governed=rec.get("governed")),
         f"owner: {rec.get('owner')} — {rec.get('ownerWhy')}",
         f"hook decision: {rec.get('decision')}",
         f"snapshot: {(snap.get('sha256') or '(none)')[:16]} "
@@ -198,8 +201,8 @@ def _proposal_entry(prop: dict, decisions: dict, now: datetime) -> dict:
     ]
     if gate:
         if gate.get("verdict"):
-            evidence.append(f"出生门 {gate.get('verdict')} — "
-                            f"{gate.get('counts', gate.get('note', 'n/a'))}")
+            evidence.append(t("docket.gate", verdict=gate.get("verdict"))
+                            + f" — {gate.get('counts', gate.get('note', 'n/a'))}")
         if gate.get("state"):
             evidence.append(
                 f"配对门控 {gate.get('state')} wealth={gate.get('wealth')} "
@@ -389,7 +392,8 @@ def confirm_rule(state, rule_id: str, force: bool = False,
         f"precedent: confirmed {rule['id']} → {state.precedents_path}",
         f"  {rule['tool']}  {rule['action']}  [{rule.get('match', 'all')}] "
         f"{json.dumps(rule.get('matchers'), ensure_ascii=False)}",
-        f"  出生门 {gate.get('verdict')} — {gate.get('counts', 'n/a')}",
+        "  " + t("docket.gate", verdict=gate.get("verdict"))
+        + f" — {gate.get('counts', 'n/a')}",
         "  下一步: precedent hooks install claude-code   (默认 dry-run)",
     ]
 
@@ -629,28 +633,30 @@ def render_docket(state, entries: list[dict], now: datetime | None = None,
     pend = [e for e in entries if e["status"] == "pending"]
     snoozed = [e for e in entries if e["status"] == "snoozed"]
     starved = starving(entries)
-    L = [f"# precedent docket — {len(pend)} 条待办"
-         + (f"，{len(snoozed)} 条已推迟" if snoozed else ""), ""]
-    L.append(f"生成于 {now.astimezone(timezone.utc).isoformat()} · "
-             f"state `{state.root}`")
+    lang = i18n.get_lang()
+    L = [t("docket.title", lang, n=len(pend))
+         + (t("docket.title.snoozed", lang, n=len(snoozed)) if snoozed else ""), ""]
+    L.append(t("docket.generated", lang,
+               ts=now.astimezone(timezone.utc).isoformat(), state=state.root))
     if starved:
         L.append("")
-        L.append(f"**STARVATION：{len(starved)} 条已经等了 ≥{STARVATION_DAYS} 天**"
-                 f" — {', '.join(e['id'] for e in starved[:6])}")
+        L.append(t("docket.starvation", lang, n=len(starved),
+                   days=STARVATION_DAYS,
+                   ids=", ".join(e["id"] for e in starved[:6])))
     L.append("")
     if not entries:
-        L.append("（空。`precedent mine` 找纠正，`precedent hooks install "
-                 "claude-code --apply` 让所有权钩子开始记录治理树里的写入。）")
+        L.append(t("docket.empty", lang))
         return "\n".join(L) + "\n"
     for e in entries:
-        age = "" if e.get("ageDays") is None else f"{e['ageDays']} 天前"
+        age = ("" if e.get("ageDays") is None
+               else t("docket.age", lang, n=e["ageDays"]))
         head = f"## `{e['id']}` · {e['kind']} · {e['status']}"
         if e["status"] == "snoozed" and e.get("snoozedUntil"):
             head += f" → {e['snoozedUntil'][:10]}"
         L.append(head)
         L.append("")
         L.append(f"- {e['title']}")
-        L.append(f"- 提出于 {e.get('created')}  {age}")
+        L.append(t("docket.raised", lang, ts=e.get("created"), age=age))
         for ev in e["evidence"]:
             L.append(f"- {ev}")
         if show_diff and e.get("diff"):
@@ -666,9 +672,7 @@ def render_docket(state, entries: list[dict], now: datetime | None = None,
             else:
                 L.append(f"  diff: {e['diff']}")
         L.append("")
-        L.append(f"  `precedent docket confirm {e['id']}` · "
-                 f"`reject {e['id']} --reason …` · "
-                 f"`snooze {e['id']}`（{SNOOZE_DAYS} 天）")
+        L.append(t("docket.actions", lang, id=e["id"], days=SNOOZE_DAYS))
         L.append("")
     return "\n".join(L) + "\n"
 
@@ -683,15 +687,17 @@ def render_batch(state, entries: list[dict], now: datetime | None = None) -> str
     sm = summarise_candidates([e["raw"] for e in writes])
     starved = starving(entries)
     L = ["# precedent docket — batch digest", ""]
-    L.append(f"{now.astimezone(timezone.utc).isoformat()} · "
-             f"{len(pend)} 条待办（规则 {len(rules)} / 写入 {len(writes)} / "
-             f"提案 {len(props)}）"
-             + (f" · **{len(starved)} 条 ≥{STARVATION_DAYS} 天**" if starved else ""))
+    lang = i18n.get_lang()
+    L.append(t("docket.batch.counts", lang,
+               ts=now.astimezone(timezone.utc).isoformat(), n=len(pend),
+               rules=len(rules), writes=len(writes), props=len(props))
+             + (t("docket.batch.starved", lang, n=len(starved),
+                  days=STARVATION_DAYS) if starved else ""))
     L.append("")
     if rules:
-        L.append("## 规则候选")
+        L.append(t("docket.batch.rules", lang))
         L.append("")
-        L.append("| id | 出生门 | 证据 | 说明 |")
+        L.append(t("docket.batch.rules.head", lang))
         L.append("|---|---|---|---|")
         for e in rules:
             L.append(f"| `{e['id']}` | {e.get('gateVerdict', '?')} "
@@ -699,13 +705,14 @@ def render_batch(state, entries: list[dict], now: datetime | None = None) -> str
                      f"{(e.get('gateCounts') or 'n/a')} | {e['title'][:60]} |")
         L.append("")
     if writes:
-        L.append("## 治理树写入")
+        L.append(t("docket.batch.writes", lang))
         L.append("")
-        L.append(f"- 共 {sm['total']} 条：子代理 {sm['subagentWrites']}，"
-                 f"其中被拦下询问 {sm['asks']}")
-        L.append(f"- 分布：{json.dumps(sm['byGoverned'], ensure_ascii=False)}")
+        L.append(t("docket.batch.writes.n", lang, total=sm["total"],
+                   sub=sm["subagentWrites"], asks=sm["asks"]))
+        L.append(t("docket.batch.writes.dist", lang,
+                   dist=json.dumps(sm["byGoverned"], ensure_ascii=False)))
         L.append("")
-        L.append("| id | agent | 路径 | diff | owner |")
+        L.append(t("docket.batch.writes.head", lang))
         L.append("|---|---|---|---|---|")
         for e in writes[:20]:
             r = e["raw"]
@@ -715,9 +722,9 @@ def render_batch(state, entries: list[dict], now: datetime | None = None) -> str
                      f"{r.get('owner')} |")
         L.append("")
     if props:
-        L.append("## 提案（examiner / 夜间改进器）——**永远不会自动应用**")
+        L.append(t("docket.batch.props", lang))
         L.append("")
-        L.append("| id | surface | 判定 | 证据 | 路径 |")
+        L.append(t("docket.batch.props.head", lang))
         L.append("|---|---|---|---|---|")
         for e in props[:20]:
             r = e["raw"]
@@ -727,8 +734,8 @@ def render_batch(state, entries: list[dict], now: datetime | None = None) -> str
                      f"`{', '.join(r.get('declaredPaths') or [])[-40:]}` |")
         L.append("")
     if not pend:
-        L.append("（没有待办。）")
+        L.append(t("docket.batch.none", lang))
         L.append("")
-    L.append("确认/拒绝/推迟：`precedent docket confirm|reject|snooze <id>`")
+    L.append(t("docket.batch.footer", lang))
     L.append("")
     return "\n".join(L) + "\n"
