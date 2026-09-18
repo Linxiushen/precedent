@@ -119,17 +119,27 @@ jobs:
 
       - name: No test may skip silently
         run: |
-          set -euo pipefail
-          skipped=$(grep -oE '^ℹ skipped [0-9]+' /tmp/npm-test.log | grep -oE '[0-9]+$')
-          pass=$(grep -oE '^ℹ pass [0-9]+' /tmp/npm-test.log | grep -oE '[0-9]+$')
-          echo "pass=$pass skipped=$skipped"
-          if [ "$skipped" != "0" ]; then
-            echo "::error::$skipped test(s) skipped — the seam tests skip when the"
-            echo "::error::precedent venv is missing, which is how this job stayed"
-            echo "::error::green for weeks without ever crossing the process boundary."
+          set -uo pipefail          # NOT -e: grep exits 1 on no match, and a
+                                    # parse miss must report itself, not vanish
+          num() { grep -oE "$1"' [0-9]+' /tmp/npm-test.log | grep -oE '[0-9]+$' \
+                    | tail -1; }
+          skipped=$(num 'skipped'); pass=$(num 'pass'); total=$(num 'tests')
+          echo "tests=${total:-?} pass=${pass:-?} skipped=${skipped:-?}"
+          if [ -z "$skipped" ] || [ -z "$pass" ]; then
+            echo "::error::could not read the test counts out of the runner output."
+            echo "::error::That is a broken assertion, not a passing build."
+            tail -30 /tmp/npm-test.log
             exit 1
           fi
-          test "$pass" -ge 94
+          if [ "$skipped" != "0" ]; then
+            echo "::error::$skipped test(s) skipped. Four tests drive the real"
+            echo "::error::precedent CLI across a process boundary and skip when"
+            echo "::error::its venv is missing — which is how this job stayed"
+            echo "::error::green for weeks without ever crossing that boundary."
+            exit 1
+          fi
+          [ "$pass" -ge 94 ] || {
+            echo "::error::only $pass tests passed; expected at least 94"; exit 1; }
 
       - name: Assert the plugin suite touched no real Claude home
         run: |
