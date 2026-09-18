@@ -200,7 +200,7 @@ def test_the_hook_and_the_library_decide_identically(tmp_path):
     os.makedirs(state.claude_home, exist_ok=True)
     state.write_precedents(PARITY_RULES)
     install(state, PARITY_RULES)
-    env = dict(os.environ, PRECEDENT_STATE_DIR=state.root)
+    env = dict(os.environ, PRECEDENT_STATE_DIR=state.root, PRECEDENT_ALLOW_STATE_REDIRECT="1")
     for tool, tool_input in PARITY_CALLS:
         proc = subprocess.run(
             [sys.executable, state.hook_script_path],
@@ -234,7 +234,7 @@ def test_the_hook_writes_nothing_into_the_claude_home(tmp_path):
                                          "tool_name": tool,
                                          "tool_input": tool_input}),
                        capture_output=True, text=True, timeout=30,
-                       env=dict(os.environ, PRECEDENT_STATE_DIR=state.root))
+                       env=dict(os.environ, PRECEDENT_STATE_DIR=state.root, PRECEDENT_ALLOW_STATE_REDIRECT="1"))
     assert tree_fingerprint(state.claude_home) == before
 
 
@@ -253,7 +253,7 @@ def test_the_hook_survives_hostile_stdin(tmp_path, payload):
     install(state, PARITY_RULES)
     proc = subprocess.run([sys.executable, state.hook_script_path], input=payload,
                           capture_output=True, text=True, timeout=30,
-                          env=dict(os.environ, PRECEDENT_STATE_DIR=state.root))
+                          env=dict(os.environ, PRECEDENT_STATE_DIR=state.root, PRECEDENT_ALLOW_STATE_REDIRECT="1"))
     assert proc.returncode == 0
     assert json.loads(proc.stdout or "{}") == {}
 

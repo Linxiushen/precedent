@@ -142,8 +142,10 @@ Contract (all six scripts, enforced in _plib.guard_main):
 import os
 import sys
 
-STATE_DIR = os.environ.get("PRECEDENT_STATE_DIR") or "{state_dir}"
-CLAUDE_HOME = os.environ.get("PRECEDENT_CLAUDE_HOME") or "{claude_home}"
+# The baked-in paths win unless the caller opts in to a redirect; see
+# _plib._redirect.  Resolved there so the two copies cannot drift.
+STATE_DIR = "{state_dir}"
+CLAUDE_HOME = "{claude_home}"
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 try:

@@ -397,7 +397,7 @@ def suite(tmp_path):
 
 
 def _run(state, script, payload, timeout=30):
-    env = dict(os.environ, PRECEDENT_STATE_DIR=state.root,
+    env = dict(os.environ, PRECEDENT_STATE_DIR=state.root, PRECEDENT_ALLOW_STATE_REDIRECT="1",
                PRECEDENT_CLAUDE_HOME=state.claude_home)
     body = payload if isinstance(payload, str) else json.dumps(payload)
     t0 = time.monotonic()

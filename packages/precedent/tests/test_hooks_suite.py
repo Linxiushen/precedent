@@ -43,7 +43,7 @@ def suite(tmp_path):
 
 
 def run_hook(state, script, payload, env=None, timeout=30):
-    e = dict(os.environ, PRECEDENT_STATE_DIR=state.root,
+    e = dict(os.environ, PRECEDENT_STATE_DIR=state.root, PRECEDENT_ALLOW_STATE_REDIRECT="1",
              PRECEDENT_CLAUDE_HOME=state.claude_home, PRECEDENT_HOOK_DEBUG="1")
     e.update(env or {})
     proc = subprocess.run(
@@ -242,7 +242,7 @@ def test_the_claude_home_is_never_written_by_any_hook(suite):
 def test_every_hook_is_fail_open_on_torn_stdin(suite, script):
     proc = subprocess.run([sys.executable, suite.hook_script(script)],
                           input="not json at all", capture_output=True, text=True,
-                          env=dict(os.environ, PRECEDENT_STATE_DIR=suite.root))
+                          env=dict(os.environ, PRECEDENT_STATE_DIR=suite.root, PRECEDENT_ALLOW_STATE_REDIRECT="1"))
     assert proc.returncode == 0 and proc.stdout.strip() == ""
     log = open(suite.hooklog_path, encoding="utf-8").read()
     assert '"event": "error"' in log and "JSONDecodeError" in log
@@ -255,7 +255,8 @@ def test_every_hook_survives_a_missing_state_dir(suite, script, tmp_path):
                                 '"tool_input":{"file_path":"/x/CLAUDE.md"}}',
                           capture_output=True, text=True,
                           env=dict(os.environ,
-                                   PRECEDENT_STATE_DIR=str(tmp_path / "gone")))
+                                   PRECEDENT_STATE_DIR=str(tmp_path / "gone"),
+                                   PRECEDENT_ALLOW_STATE_REDIRECT="1"))
     assert proc.returncode == 0
     assert proc.stdout.strip() in ("", "{}")
 

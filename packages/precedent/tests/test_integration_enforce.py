@@ -28,7 +28,7 @@ SESSION = "abcdabcd-1234-4321-8888-abcdabcdabcd"
 
 
 def run_script(state, script, payload):
-    env = dict(os.environ, PRECEDENT_STATE_DIR=state.root,
+    env = dict(os.environ, PRECEDENT_STATE_DIR=state.root, PRECEDENT_ALLOW_STATE_REDIRECT="1",
                PRECEDENT_CLAUDE_HOME=state.claude_home)
     proc = subprocess.run([sys.executable, state.hook_script(script)],
                           input=json.dumps(payload), capture_output=True,

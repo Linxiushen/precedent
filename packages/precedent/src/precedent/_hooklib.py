@@ -50,11 +50,28 @@ __all__ = [
 
 SCHEMA_VERSION = 1
 
-#: Set by :func:`configure` from the values baked into each generated script
-#: (``PRECEDENT_STATE_DIR`` / ``PRECEDENT_CLAUDE_HOME`` still win at run time,
-#: which is what lets the test suite point the whole thing at ``tmp_path``).
+#: Set by :func:`configure` from the values baked into each generated script.
+#:
+#: ``PRECEDENT_STATE_DIR`` and ``PRECEDENT_CLAUDE_HOME`` used to win at run
+#: time unconditionally, which is what let the test suite point the whole
+#: thing at ``tmp_path`` -- and also meant one environment variable silently
+#: turned every rule off.  Exported ``PRECEDENT_STATE_DIR=$(mktemp -d)``, the
+#: hook found no precedents, returned ``{}``, and every deny was gone with
+#: nothing said anywhere.  A policy gate whose off switch is silent is not a
+#: policy gate, and SECURITY.md enumerated four ways to defeat enforcement
+#: without listing the easiest one.
+#:
+#: The redirect now requires :data:`REDIRECT_OPT_IN` to be set as well.  With
+#: the opt-in it behaves exactly as before; without it the variable is
+#: ignored and one line goes to stderr saying so, because the failure this
+#: prevents is not "someone redirected the state" but "nobody could tell".
 STATE_DIR = ""
 CLAUDE_HOME = ""
+
+#: The env var that must accompany a state/home redirect for it to take
+#: effect.  Deliberately verbose: it should be impossible to set by accident
+#: and obvious in a shell history.
+REDIRECT_OPT_IN = "PRECEDENT_ALLOW_STATE_REDIRECT"
 
 MAX_SUBJECT = 4096            # chars of tool input a regex may ever see
 BUDGET_MS = 50.0              # per-pattern time budget before quarantine
@@ -76,12 +93,33 @@ TOOL_FIELDS = {
 WRITE_TOOLS = ("Write", "Edit", "MultiEdit", "NotebookEdit", "Bash")
 
 
+def _redirect(var: str, baked: str) -> str:
+    """The env override for ``var``, honoured only with the opt-in set.
+
+    Returns ``baked`` and complains on stderr when the variable is set without
+    :data:`REDIRECT_OPT_IN`.  Never raises: a hook that dies is a hook that
+    allows.
+    """
+    want = os.environ.get(var)
+    if not want or want == baked:
+        return baked
+    if os.environ.get(REDIRECT_OPT_IN):
+        return want
+    try:
+        sys.stderr.write(
+            "precedent: ignoring %s=%s -- set %s=1 as well to redirect. "
+            "Enforcement continues against %s.\n"
+            % (var, want, REDIRECT_OPT_IN, baked or "(nothing configured)"))
+    except Exception:
+        pass
+    return baked
+
+
 def configure(state_dir: str, claude_home: str = "") -> None:
     global STATE_DIR, CLAUDE_HOME
-    STATE_DIR = os.environ.get("PRECEDENT_STATE_DIR") or state_dir or ""
-    CLAUDE_HOME = (os.environ.get("PRECEDENT_CLAUDE_HOME") or claude_home
-                   or os.environ.get("CLAUDE_CONFIG_DIR")
-                   or os.path.expanduser("~/.claude"))
+    STATE_DIR = _redirect("PRECEDENT_STATE_DIR", state_dir or "")
+    CLAUDE_HOME = _redirect("PRECEDENT_CLAUDE_HOME", claude_home or "") or (
+        os.environ.get("CLAUDE_CONFIG_DIR") or os.path.expanduser("~/.claude"))
 
 
 # --------------------------------------------------------------------------

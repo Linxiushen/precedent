@@ -52,7 +52,7 @@ def hooked(tmp_path):
 
 
 def _run(state, payload, env=None):
-    e = dict(os.environ, PRECEDENT_STATE_DIR=state.root, PRECEDENT_HOOK_DEBUG="1")
+    e = dict(os.environ, PRECEDENT_STATE_DIR=state.root, PRECEDENT_ALLOW_STATE_REDIRECT="1", PRECEDENT_HOOK_DEBUG="1")
     e.update(env or {})
     proc = subprocess.run([sys.executable, state.hook_script_path],
                           input=json.dumps(payload), capture_output=True,
@@ -115,14 +115,14 @@ def test_hook_is_fail_open(hooked, tmp_path):
     # torn stdin: exit 0, NO stdout, and the error lands in hooklog.jsonl
     proc = subprocess.run([sys.executable, hooked.hook_script_path], input="not json",
                           capture_output=True, text=True,
-                          env=dict(os.environ, PRECEDENT_STATE_DIR=hooked.root))
+                          env=dict(os.environ, PRECEDENT_STATE_DIR=hooked.root, PRECEDENT_ALLOW_STATE_REDIRECT="1"))
     assert proc.returncode == 0 and proc.stdout.strip() == ""
     log = open(hooked.hooklog_path, encoding="utf-8").read()
     assert '"event": "error"' in log and "JSONDecodeError" in log
     # missing precedents.json
     out, _ = _run(hooked, {"hook_event_name": "PreToolUse", "tool_name": "Bash",
                            "tool_input": {"command": "pip install x"}},
-                  env={"PRECEDENT_STATE_DIR": str(tmp_path / "nowhere"),
+                  env={"PRECEDENT_STATE_DIR": str(tmp_path / "nowhere"), "PRECEDENT_ALLOW_STATE_REDIRECT": "1",
                        "PRECEDENT_HOOK_DEBUG": ""})
     assert out == {}
     # an uncompilable regex is skipped, the rest of the rules still apply
@@ -410,7 +410,13 @@ def test_uninstall_dry_run_shows_the_same_result_as_the_apply(tmp_path):
 def test_render_hook_script_bakes_in_the_state_dir(tmp_path):
     body = render_hook_script(str(tmp_path / "st ate"))
     assert str(tmp_path / "st ate") in body
-    assert "PRECEDENT_STATE_DIR" in body
+    # The generated script must NOT read PRECEDENT_STATE_DIR itself.  It used
+    # to, with `os.environ.get(...) or "<baked>"`, so one exported variable
+    # pointed the hook at an empty directory and every deny vanished silently.
+    # Redirects now go through _plib._redirect, which demands an opt-in and
+    # says so on stderr -- and keeping that logic in one place is what stops
+    # the two copies of it from drifting apart.
+    assert "PRECEDENT_STATE_DIR" not in body
     compile(body, "pre_tool_use.py", "exec")       # it is valid Python
 
 

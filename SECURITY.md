@@ -180,6 +180,19 @@ security boundary.
   — but it is a *heuristic over command text*, bounded on purpose (8 KB of
   command, 16 governed paths per call, a 512-character context window). A write
   hidden inside a script the agent invokes (`./deploy.sh`) is invisible to it.
+* **Enforcement can be redirected, but not silently.** The generated hooks
+  read a state directory baked in at install time. `PRECEDENT_STATE_DIR` (and
+  `PRECEDENT_CLAUDE_HOME`) can point them somewhere else, which is how the
+  test suite runs the whole thing against `tmp_path` — but only when
+  `PRECEDENT_ALLOW_STATE_REDIRECT` is set alongside. Without it the variable
+  is ignored and the hook writes one line to stderr naming the path it
+  declined and the path it is still enforcing against. Until 2026-09-18 the
+  redirect needed no opt-in and said nothing, so `export
+  PRECEDENT_STATE_DIR=$(mktemp -d)` turned every deny off with no trace in
+  the output, the hook log or the ledger. Anyone who can set environment
+  variables for your Claude Code process can still turn enforcement off, with
+  the opt-in or by uninstalling the hooks; what they can no longer do is turn
+  it off without the transcript showing it.
 * **Enforcement is reached through a tool matcher.** The hook runs for
   `Bash|Edit|MultiEdit|NotebookEdit|Write` plus whatever tools your active
   rules name. A third-party MCP tool that writes files does not match and is
