@@ -31,7 +31,7 @@ A complete self-evolving loop has five steps. The field has one of them.
 | step | what it means | the state of the art (Sept 2026) | what Precedent does |
 |---|---|---|---|
 | ① **propose** | the agent edits its own memory / skills / rules | everywhere: auto-memory, skill-creator, background review, sleep-time optimisers | three proposers: the **correction miner**, Claude Code's own writes (brought under governance), and a **nightly improver** that clusters failure signatures |
-| ② **accept** | should this change be kept? | **nobody.** Acceptance is an LLM saying yes; greedy "score went up" acceptance is 30–45 % false commits (PACE 2606.08106; reproduced here at 44.6 %) | two gates: the **temporal birth gate** for rules (free, offline, deterministic) and the **examiner** for everything else — paired e-process, harm martingale, spend schedule, task floor |
+| ② **accept** | should this change be kept? | **nobody.** Acceptance is an LLM saying yes; greedy "score went up" acceptance is 30–45 % false commits (PACE 2606.08106; reproduced here at 47.0 %) | two gates: the **temporal birth gate** for rules (free, offline, deterministic) and the **examiner** for everything else — paired e-process, harm martingale, spend schedule, task floor |
 | ③ **enforce** | does the change actually reach the model and bind it? | "written but never loaded" — 41 of 60 artifacts on the author's machine had never once been referenced | a **six-hook suite** in `settings.json`: `PreToolUse` deny/ask plus path-level ownership, `PostToolUse` change capture, live load receipts, funnel counters |
 | ④ **audit** | is learning happening, and has anything got worse? | **nobody.** Production loops fail silently for weeks (hermes#95976: 41 background forks, 0 updates) | a **docket** that never piles up silently, four starvation alarms, a proposed→accepted→activated→attributed funnel, a hash-chained ledger, content-addressed snapshots and `undo` |
 | ⑤ **re-evolve** | feed the audit back into the proposer | — | rejected drafts return as negative examples; the precedent set grows with every correction |
@@ -353,6 +353,22 @@ Confirming writes the rule into `~/.precedent/precedents.json` with
 `status: active` — the only file the hook trusts — and a hash-chained
 certificate into the ledger. A candidate that did not `PASS` needs `--force`,
 and the forced verdict is recorded on the rule forever.
+
+A rule that is already enforced and turns out to be wrong comes back out with
+`precedent retire`:
+
+```bash
+precedent retire p-9f8e7d6c --reason "too broad — 68 false interruptions"
+```
+
+The rule stays in the file as a record with `status: retired`, and the hook
+enforces exactly `status == "active"`, so it stops firing immediately. The
+reason is appended to `rejected.jsonl`, which is read by two things: the next
+`compile --llm` prompt, as a negative example, and `docket confirm` — which
+will refuse to re-confirm a rule that was already thrown out, matching on what
+the rule *does* rather than on its id, so a re-compile that rewords it is
+caught too. `--force` overrules that, and re-scoping the rule (the usual fix
+for "too broad") is allowed, because it is a different rule.
 
 ### 5. `precedent hooks install --apply` — enforcement (**you run this, by hand**)
 
@@ -799,7 +815,7 @@ Precedent 是一个**自进化的 Claude Code harness**，它的核心是一个*
 | 步骤 | 含义 | 市面现状（2026-09） | Precedent |
 |---|---|---|---|
 | ① 提议 | agent 改自己的记忆/技能/规则 | 到处都是：自动记忆、skill-creator、后台审查、夜间优化器 | 三个提议者：**纠正挖掘器**、Claude Code 自带的写入（纳入治理）、夜间**改进器** |
-| ② **接受** | 这次改动该不该留 | **没人做**。接受 = LLM 自己说了算；贪心"分数上升就保留"= 30–45% 误接受（PACE 2606.08106；本仓库复现 44.6%） | 两道门：规则走**时序出生门**（免费、离线、确定性），其余走**考官**——配对 e-process、伤害鞅、支出调度、逐任务底线 |
+| ② **接受** | 这次改动该不该留 | **没人做**。接受 = LLM 自己说了算；贪心"分数上升就保留"= 30–45% 误接受（PACE 2606.08106；本仓库复现 47.0%） | 两道门：规则走**时序出生门**（免费、离线、确定性），其余走**考官**——配对 e-process、伤害鞅、支出调度、逐任务底线 |
 | ③ 执行 | 改动真的到达模型并约束它 | "写了但从未加载"——作者机器上 60 个工件有 41 个从未被引用 | `settings.json` 里的**六钩子套件**：`PreToolUse` deny/ask + 按路径的所有权、`PostToolUse` 变更捕获、实时加载收据、漏斗计数 |
 | ④ **审计** | 学习真的发生了吗、有没有变坏 | **没人做**。生产环境里循环静默失效数周（hermes#95976：41 次后台 fork、0 次更新） | **绝不静默堆积**的 docket、四个饿死告警、提议→接受→激活→归因漏斗、哈希链账本、内容寻址快照与 `undo` |
 | ⑤ 再进化 | 用审计结果调整提议者 | 无 | 被拒草稿作为负例回灌；先例集随每一次纠正持续生长 |
@@ -943,6 +959,19 @@ precedent docket confirm p-9f8e7d6c   # 一次人类确认 → 规则 status: ac
 precedent hooks install claude-code                 # 默认 dry-run，打印完整合并方案
 precedent hooks install claude-code --apply --i-know   # 这一步请你亲手运行
 ```
+
+已经在执行、后来发现不对的规则，用 `precedent retire` 收回：
+
+```bash
+precedent retire p-9f8e7d6c --reason "太宽 —— 会误伤 68 次合法调用"
+```
+
+规则以 `status: retired` 留在文件里作为记录，而钩子只认 `status == "active"`，
+所以它立刻停止生效。理由会写进 `rejected.jsonl`，有两个东西读它：下一次
+`compile --llm` 的提示词（作为反例），以及 `docket confirm` —— 它会拒绝重新确认
+一条已经被你扔掉过的规则，而且匹配的是规则**做什么**而不是它的 id，所以换个措辞
+重新编译也会被拦住。`--force` 可以推翻这个判断；重新限定作用域（"太宽"最常见的
+修法）不受影响，因为那是另一条规则。
 
 然后开一个**新的 Claude Code 会话**，让它做那件你说过不要做的事：
 

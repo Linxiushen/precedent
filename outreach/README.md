@@ -1,10 +1,30 @@
 # outreach — six threads, two replies
 
-Drafts for the six issues read in full in [`THREADS.md`](THREADS.md). Two are
-cleared to send; four are held and say why on their own first line.
+**All of this has been sent.** Four of the six went out on 2026-09-17 and two
+had no comment body to send at all — `send.sh` carries the log with the
+read-back permalinks. Three of the four were in the held set and were posted
+anyway on the user's explicit instruction; the hold reasons stay in their files
+verbatim, overruled rather than withdrawn, because a hold that gets edited away
+every time it is overruled stops being a record of anything.
 
-**Nothing here has been posted.** [`send.sh`](send.sh) has every command
-commented out.
+Two replies came back and both are answered. One of them, on
+anthropics/claude-code#82056, was a correction we could not have found
+ourselves and is now a code change and four regression tests.
+
+Three of the four comments were also edited on 2026-09-18: they carried a
+repository link that is not public, so for about two hours they pointed
+strangers at a 404, and two of them carried a factual error about which rule
+received which gate verdict. Both are corrected in the body of the comments
+rather than silently, because that thread re-runs numbers.
+
+Drafts for the six issues read in full in [`THREADS.md`](THREADS.md).
+
+The `send?` column below is what the reading recommended *before* anything was
+sent, kept as written. It is no longer what happened: see the top of this file
+and the SENT LOG in [`send.sh`](send.sh) for what actually went out, and note
+that the table's `INSUFFICIENT at 0/2` claim for SkillOpt#155 was wrong — that
+verdict belongs to a different rule, and the posted comment carries a public
+correction.
 
 ## The threads
 

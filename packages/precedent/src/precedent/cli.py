@@ -1602,6 +1602,12 @@ def build_parser() -> argparse.ArgumentParser:
                        help="THE ACCEPTOR BENCHMARK: labelled streams of "
                             "candidate edits (null / regression / unsafe / "
                             "tamper / good) and every acceptor scored on them")
+    # bench does not take --claude-home or --state-dir (it reads neither), but
+    # README:151 says --lang is accepted everywhere, and `precedent bench
+    # --lang en` failed outright while `precedent --lang en bench` worked.
+    s.add_argument("--lang", choices=i18n.LANGS, default=argparse.SUPPRESS,
+                   help="output language for the frame; numbers and labels in "
+                        "the table are never translated")
     s.add_argument("--all", action="store_true",
                    help="every family and every acceptor (the default; the flag "
                         "is here so the headline command reads as it means, and "
