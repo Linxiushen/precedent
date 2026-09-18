@@ -215,7 +215,8 @@ def cmd_init(args) -> int:
         os.path.join(state.scans_dir, f"receipts-{stamp(now)}.json"), result.to_dict())
 
     n_len, ok, _records = _ledger_info(state)
-    headline = render_headline(result, state, n_precedents=len(state.precedents()),
+    headline = render_headline(result, state,
+                               n_precedents=len(state.active_precedents()),
                                ledger_len=n_len, ledger_ok=ok, now=now)
     sys.stdout.write(headline)
     live = getattr(result, "live", None) or {}
@@ -1023,11 +1024,11 @@ def cmd_report(args) -> int:
         mine_result = _run_mine(state, project=args.project, last_n=args.last_n,
                                 similarity=args.similarity)
         write_topics(state, mine_result)
-    _len, _ok, records = _ledger_info(state)
+    _len, ledger_ok, records = _ledger_info(state)
     settings_path = getattr(args, "settings", None) or os.path.join(
         state.claude_home, "settings.json")
     md = render_digest(state, scan_result, mine_result, state.precedents(), records,
-                       now=now, settings_path=settings_path,
+                       now=now, settings_path=settings_path, ledger_ok=ledger_ok,
                        live_summary=getattr(scan_result, "live", None),
                        days=getattr(args, "days", 7))
     if args.md_out:

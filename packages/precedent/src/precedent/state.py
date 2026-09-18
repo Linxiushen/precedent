@@ -312,6 +312,17 @@ class StateDir:
             return [r for r in data if isinstance(r, dict)]
         return []
 
+    def active_precedents(self) -> list[dict]:
+        """Only the rules the hook will actually enforce.
+
+        ``_hooklib`` enforces every entry whose ``status`` is exactly
+        ``"active"``.  A retired rule stays in the file as a record of what
+        was tried, so ``len(precedents())`` is the wrong number for any line
+        that says "enforced" -- it tells the user a rule is running that is
+        not.
+        """
+        return [r for r in self.precedents() if r.get("status") == "active"]
+
     def write_precedents(self, rules: list[dict], now: datetime | None = None) -> str:
         return self.write_json(self.precedents_path, {
             "schemaVersion": SCHEMA_VERSION,

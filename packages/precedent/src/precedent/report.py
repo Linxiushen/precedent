@@ -81,9 +81,19 @@ def _artifact_mix(scan_result, lang: str | None = None) -> str:
 
 
 def render_headline(scan_result, state, n_precedents: int = 0,
-                    ledger_len: int = 0, ledger_ok: bool = True,
+                    ledger_len: int = 0, *, ledger_ok: bool,
                     now: datetime | None = None, lang: str | None = None) -> str:
-    """The ten-line first screen printed by ``precedent init``."""
+    """The ten-line first screen printed by ``precedent init``.
+
+    ``ledger_ok`` is keyword-only and has **no default**, deliberately.  It
+    used to default to ``True``, and ``render_digest`` did not pass it — so
+    ``precedent report`` printed "chain ok" over a ledger whose chain it had
+    already verified as broken, on the same file, in the same second.  The
+    verification ran; the answer was assigned to ``_ok`` and thrown away.
+    An integrity flag that defaults to "fine" will be forgotten exactly once,
+    and the one command a user runs daily is the worst place for it to happen.
+    Callers must now say what they found.
+    """
     now = now or datetime.now(timezone.utc)
     lang = lang or i18n.get_lang()
     rows = scan_result.funnel
@@ -381,7 +391,8 @@ def render_daily(rows: list[dict], lang: str | None = None) -> list[str]:
 def render_digest(state, scan_result, mine_result, precedents: list[dict],
                   ledger_records: list, now: datetime | None = None,
                   settings_path: str | None = None, live_summary: dict | None = None,
-                  days: int = 7, lang: str | None = None) -> str:
+                  days: int = 7, lang: str | None = None, *,
+                  ledger_ok: bool) -> str:
     """``precedent report`` — the daily digest: alarms, funnel, docket, spend.
 
     The section headings and the table frames are translated; the bodies below
@@ -420,9 +431,12 @@ def render_digest(state, scan_result, mine_result, precedents: list[dict],
     L.append(t("report.h1", lang))
     L.append("")
     L.append("```")
-    L.append(render_headline(scan_result, state, n_precedents=len(precedents),
-                             ledger_len=len(ledger_records), now=now,
-                             lang=lang).rstrip("\n"))
+    # `active`, not `precedents`: the line is labelled "precedents enforced"
+    # and the hook enforces exactly status == "active", so a retired rule
+    # counted here is a rule the user is told is running when it is not.
+    L.append(render_headline(scan_result, state, n_precedents=len(active),
+                             ledger_len=len(ledger_records), ledger_ok=ledger_ok,
+                             now=now, lang=lang).rstrip("\n"))
     L.append("```")
     L.append("")
     L.append(t("report.h2", lang))
