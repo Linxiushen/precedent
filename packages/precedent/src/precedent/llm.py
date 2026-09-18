@@ -60,7 +60,7 @@ __all__ = [
     "claude_argv",
     "extract_json_rules",
     "llm_draft_rules",
-    "load_negatives",
+    "load_negatives", "negative_body",
     "record_rejected",
     "record_spend",
     "run_claude",
@@ -263,7 +263,7 @@ def build_prompt(topics, negatives: list[dict] | None = None) -> str:
         lines.append("")
         for n in negatives[:MAX_NEGATIVES]:
             lines.append(f"  - rejected because: {n.get('reason', '?')}")
-            lines.append(f"    {json.dumps(n.get('draft'), ensure_ascii=False)[:400]}")
+            lines.append(f"    {json.dumps(negative_body(n), ensure_ascii=False)[:400]}")
     lines.append("")
     lines.append(f"Return ONLY a JSON array of 1 to {MAX_DRAFTS} rule objects. "
                  "No prose, no markdown fence, no explanation. A rule that does "
@@ -429,6 +429,28 @@ def record_rejected(state, rows: list[dict]) -> str:
             fh.write(json.dumps(json_safe(row), ensure_ascii=False,
                                 allow_nan=False) + "\n")
     return path
+
+
+def negative_body(n: dict) -> dict | str | None:
+    """The rejected rule itself, whichever key the writer happened to use.
+
+    ``rejected.jsonl`` is written from three places and they did not agree.
+    ``llm`` and ``improve`` write ``draft``; ``docket.retire_rule`` and
+    ``docket.reject`` wrote ``rule`` -- and every reader asked for ``draft``.
+    So the reason for a human rejection reached the next prompt and the rule
+    it rejected rendered as ``null``: the loop was told "this was rejected
+    because X" without being shown what X applied to.
+
+    On the author's machine that was one row of three, and it was the only
+    human rejection in the file -- the two rows that worked were both the
+    model rejecting its own drafts.  The single most valuable negative example
+    was the one being dropped.
+
+    Writers are normalised to ``draft`` now; this stays tolerant so rows
+    already on disk keep working.
+    """
+    body = n.get("draft")
+    return n.get("rule") if body is None else body
 
 
 def load_negatives(state, limit: int = MAX_NEGATIVES) -> list[dict]:

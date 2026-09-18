@@ -78,7 +78,7 @@ from .live import merge_live_receipts
 from .ownership import (GUARD_RULE_ID, build_agent_created, guard_active, own,
                         read_owners, set_guard)
 from .llm import (DEFAULT_BUDGET_USD, DEFAULT_MODEL, LLMUnavailable,
-                  llm_draft_rules, total_spend)
+                  llm_draft_rules, negative_body, total_spend)
 from .rules import ASK_BEFORE_PRESETS
 from .mine import DEFAULT_SIMILARITY, load_topics, mine, write_topics
 from .i18n import t as tr          # `t` is a loop variable all over this file
@@ -416,7 +416,7 @@ def _compile_with_llm(state, args, result, topics, gate_kwargs) -> int:
         L.append(f"## ✗ 拒绝：{rej.get('reason')}")
         L.append("")
         L.append("```json")
-        L.append(json.dumps(rej.get("draft"), ensure_ascii=False, indent=2)[:1200])
+        L.append(json.dumps(negative_body(rej), ensure_ascii=False, indent=2)[:1200])
         L.append("```")
         L.append("")
     if out.rejected_path:

@@ -40,9 +40,18 @@ RULE_CANDIDATE = {
               "t0": "2026-09-01T09:04:00Z", "failures": []},
 }
 
-FAILED_CANDIDATE = dict(RULE_CANDIDATE, id="p-bad",
-                        birth={"verdict": "FAIL", "counts": "误触 3/5 = 60%",
-                               "failures": ["误触率 60% > 2%"]})
+# A *different* rule that fails the gate -- not a copy of RULE_CANDIDATE with
+# the verdict swapped.  The birth verdict is a function of the rule and the
+# record, so two candidates with identical matchers cannot really disagree
+# about it; and since `confirm` now refuses a rule whose behaviour was already
+# rejected (docket.prior_rejection), a fixture that made them behaviourally
+# identical had this test rejecting one and confirming the other.
+FAILED_CANDIDATE = dict(
+    RULE_CANDIDATE, id="p-bad",
+    matchers=[{"type": "input_regex", "field": "command",
+               "regex": "(?i)(?<![A-Za-z0-9_])pip(?![A-Za-z0-9_])"}],
+    birth={"verdict": "FAIL", "counts": "误触 3/5 = 60%",
+           "failures": ["误触率 60% > 2%"]})
 
 WRITE_CANDIDATE = {
     "schemaVersion": 1, "id": "w-deadbeef", "kind": "write",
@@ -155,7 +164,9 @@ def test_rejecting_a_rule_keeps_it_as_a_negative_example(state):
     assert rc == 0
     rows = [json.loads(x) for x in open(state.rejected_path, encoding="utf-8")]
     assert rows[-1]["id"] == "p-bad" and "太宽" in rows[-1]["reason"]
-    assert rows[-1]["rule"]["matchers"]
+    # `draft`, not `rule`: every reader of rejected.jsonl asks for `draft`, and
+    # this row is what the next prompt and `confirm`'s rejection memory read.
+    assert rows[-1]["draft"]["matchers"]
     cert = state.ledger().records()[-1].as_dict()
     assert cert["decision"] == "REJECT" and "太宽" in cert["note"]
     assert "p-bad" not in {e["id"] for e in build_entries(state, now=NOW)}

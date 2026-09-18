@@ -50,7 +50,8 @@ from dataclasses import dataclass, field
 from receipts.transcripts import iter_records
 
 from .llm import (DEFAULT_BUDGET_USD, DEFAULT_MODEL, DEFAULT_TIMEOUT_S,
-                  LLMUnavailable, check_budget, load_negatives, record_rejected,
+                  LLMUnavailable, check_budget, load_negatives, negative_body,
+                  record_rejected,
                   record_spend, run_claude, sane_cost)
 from .mine import content_tokens, jaccard
 from .proposals import append_proposal
@@ -463,7 +464,7 @@ def build_improve_prompt(cluster: FailureCluster, *, claude_home: str,
         L.append("")
         for n in negatives[:5]:
             L.append(f"  - rejected because: {n.get('reason', '?')}")
-            L.append(f"    {json.dumps(n.get('draft'), ensure_ascii=False)[:300]}")
+            L.append(f"    {json.dumps(negative_body(n), ensure_ascii=False)[:300]}")
     L.append("")
     L.append("Answer with the JSON object and nothing else.")
     return "\n".join(L)

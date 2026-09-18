@@ -256,6 +256,61 @@ def starving(entries: list[dict], days: int = STARVATION_DAYS) -> list[dict]:
 # the three verbs
 # --------------------------------------------------------------------------
 
+def _behaviour_key(rule: dict) -> str:
+    """What this rule *does*, ignoring how it was worded or when it was built.
+
+    Two rules with the same tool, action, scope and matcher set will interrupt
+    exactly the same calls, whatever their ids or messages say.  Matching on
+    this rather than on ``id`` is what makes the rejection memory survive a
+    re-compile that reworded the message or re-derived a different id.
+    """
+    matchers = sorted(
+        json.dumps(m, sort_keys=True, ensure_ascii=False)
+        for m in (rule.get("matchers") or []) if isinstance(m, dict))
+    return json.dumps({
+        "tool": rule.get("tool"), "hook": rule.get("hook"),
+        "action": rule.get("action"), "match": rule.get("match"),
+        "scope": rule.get("scope"), "cwd_glob": rule.get("cwd_glob"),
+        "matchers": matchers,
+    }, sort_keys=True, ensure_ascii=False)
+
+
+def prior_rejection(state, rule: dict) -> dict | None:
+    """The most recent time this rule was thrown out, or ``None``.
+
+    Step (5) of the loop is "re-evolve", and README:37 promises that rejected
+    drafts come back as negative examples.  They did -- to the *proposer*.
+    The *acceptor* never looked.  A rule the user retired by hand could be
+    re-compiled, pass the birth gate again (it had passed the first time; that
+    is why it was enforced), and `confirm` would walk it straight back to
+    ``active`` with rc=0 and not one word about the rejection.  Verified on a
+    synthetic state built entirely by the shipped CLI.
+
+    A gate that cannot remember being overruled is not an acceptor, it is a
+    filter, and the thing the user is most likely to re-propose is the thing
+    they already threw out once.
+
+    Matched by id first, then by behaviour -- see :func:`_behaviour_key`.
+    """
+    try:
+        rows = [json.loads(line) for line in
+                open(state.path("rejected.jsonl"), encoding="utf-8")
+                if line.strip()]
+    except (OSError, ValueError):
+        return None
+    want_id = rule.get("id")
+    want_key = _behaviour_key(rule)
+    for row in reversed(rows):                       # newest first
+        body = row.get("draft")
+        if body is None:
+            body = row.get("rule")                   # rows written before 2026-09-18
+        if not isinstance(body, dict):
+            continue
+        if (want_id and body.get("id") == want_id) or _behaviour_key(body) == want_key:
+            return row
+    return None
+
+
 def confirm_rule(state, rule_id: str, force: bool = False,
                  now: datetime | None = None) -> tuple[int, list[str]]:
     """A compiled candidate becomes an ``active`` precedent.  Returns (rc, lines).
@@ -293,6 +348,24 @@ def confirm_rule(state, rule_id: str, force: bool = False,
                    f"({gate.get('verdict')}: {gate.get('counts', 'n/a')}). "
                    f"Mechanical rejection overrides everything (PROCTOR); pass "
                    f"--force only if you know why."]
+
+    prior = prior_rejection(state, rule)
+    if prior is not None and not force:
+        when = str(prior.get("at") or prior.get("ts") or "?")[:10]
+        how = {"retire": "retired after being enforced",
+               "docket": "rejected in the docket"}.get(prior.get("source"),
+                                                       str(prior.get("source") or "rejected"))
+        return 1, [
+            f"precedent: {rule['id']} was already thrown out once and is being "
+            f"proposed again — refusing.",
+            f"  {when}: {how}",
+            f"  reason given: {str(prior.get('reason') or '(none recorded)')[:160]}",
+            f"  The birth gate only looks at the record; it cannot see that you "
+            f"already decided this. If the reason no longer holds — a narrower "
+            f"scope, a different matcher — re-compile it as a *different* rule "
+            f"rather than the same one, or pass --force to overrule yourself.",
+            f"  ({state.rejected_path})",
+        ]
 
     rule["status"] = "active"
     rule["confirmedBy"] = "user"
@@ -361,7 +434,8 @@ def retire_rule(state, rule_id: str, reason: str | None = None,
     _append_rejected(state, {
         "id": rule_id, "at": now_iso(now),
         "reason": reason or "user retired an enforced rule",
-        "rule": {k: v for k, v in rule.items() if k != "birth"},
+        # `draft`, not `rule`: every reader of rejected.jsonl asks for `draft`.
+        "draft": {k: v for k, v in rule.items() if k != "birth"},
         "source": "retire"})
     return 0, [
         f"precedent: retired {rule_id} — it is no longer enforced",
@@ -426,7 +500,7 @@ def reject(state, entry_id: str, reason: str | None = None,
             now=now)
         _append_rejected(state, {
             "id": entry_id, "at": now_iso(now), "reason": reason or "user rejected",
-            "rule": {k: v for k, v in raw.items() if k != "birth"},
+            "draft": {k: v for k, v in raw.items() if k != "birth"},
             "source": "docket"})
         return 0, [f"precedent: rejected rule {entry_id}",
                    f"  它会作为反例进入下一次 `compile --llm` 的提示词 "
