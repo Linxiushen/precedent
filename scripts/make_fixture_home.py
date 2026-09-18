@@ -313,6 +313,38 @@ def build(root: str, force: bool = False) -> str:
                  "oldString": "never commit directly to the default branch",
                  "newString": "never commit directly to the default branch",
                  "replaceAll": False, "userModified": False}),
+
+        # ---- the correction the quickstart is written around --------------
+        # README's worked example is "use uv, not pip", and the fixture had no
+        # corrections at all, so `mine` reported 0, the docket stayed empty,
+        # and steps 2-4 of the documented six dead-ended on the tree we ship.
+        # A quickstart that cannot be run on the fixture that ships with it is
+        # a quickstart nobody can check.
+        _tool("2026-09-13T08:02:00.000Z", SESSION_2, ws_a, "tu_pip1", "Bash",
+              {"command": "pip install requests"}),
+        _result("2026-09-13T08:02:01.000Z", SESSION_2, ws_a, "tu_pip1",
+                {"stdout": "Successfully installed requests-2.32.3",
+                 "stderr": "", "interrupted": False}),
+        _human("2026-09-13T08:02:30.000Z", SESSION_2, ws_a,
+               "don't use pip here, use uv — it is what the lockfile is for"),
+        _assistant("2026-09-13T08:02:40.000Z", SESSION_2, ws_a,
+                   "Understood — uv from here on."),
+
+        # t0 is that turn.  The gate needs eligible actions after it that do
+        # NOT fire, or the verdict is INSUFFICIENT rather than PASS.
+        _tool("2026-09-13T08:03:00.000Z", SESSION_2, ws_a, "tu_uv1", "Bash",
+              {"command": "uv add requests"}),
+        _result("2026-09-13T08:03:01.000Z", SESSION_2, ws_a, "tu_uv1",
+                {"stdout": "Resolved 4 packages", "stderr": "",
+                 "interrupted": False}),
+        _tool("2026-09-13T08:04:00.000Z", SESSION_2, ws_a, "tu_test", "Bash",
+              {"command": "uv run pytest -q"}),
+        _result("2026-09-13T08:04:01.000Z", SESSION_2, ws_a, "tu_test",
+                {"stdout": "12 passed", "stderr": "", "interrupted": False}),
+        _tool("2026-09-13T08:05:00.000Z", SESSION_2, ws_a, "tu_git", "Bash",
+              {"command": "git status --short"}),
+        _result("2026-09-13T08:05:01.000Z", SESSION_2, ws_a, "tu_git",
+                {"stdout": "", "stderr": "", "interrupted": False}),
     ]
     write_jsonl(os.path.join(home, "projects", PROJECT_A_SLUG,
                              f"{SESSION_2}.jsonl"), s2)
@@ -326,6 +358,29 @@ def build(root: str, force: bool = False) -> str:
               {"command": "npm install express"}),
         _result("2026-09-14T11:00:07.000Z", SESSION_3, ws_b, "tu_npm",
                 {"stdout": "ok", "stderr": "", "interrupted": False}),
+
+        # The same correction a second time, in a different project and a day
+        # later: one correction is an incident, two is a topic, and the miner
+        # groups by topic.  It is also what makes this rule worth enforcing
+        # rather than worth remembering.
+        _tool("2026-09-14T11:01:00.000Z", SESSION_3, ws_b, "tu_pip2", "Bash",
+              {"command": "pip install flask"}),
+        _result("2026-09-14T11:01:01.000Z", SESSION_3, ws_b, "tu_pip2",
+                {"stdout": "Successfully installed flask-3.0.3", "stderr": "",
+                 "interrupted": False}),
+        _human("2026-09-14T11:01:20.000Z", SESSION_3, ws_b,
+               "pip again — I said use uv"),
+        _assistant("2026-09-14T11:01:30.000Z", SESSION_3, ws_b,
+                   "Sorry — switching to uv."),
+        _tool("2026-09-14T11:02:00.000Z", SESSION_3, ws_b, "tu_uv2", "Bash",
+              {"command": "uv add flask"}),
+        _result("2026-09-14T11:02:01.000Z", SESSION_3, ws_b, "tu_uv2",
+                {"stdout": "Resolved 7 packages", "stderr": "",
+                 "interrupted": False}),
+        _tool("2026-09-14T11:03:00.000Z", SESSION_3, ws_b, "tu_ls", "Bash",
+              {"command": "ls -la"}),
+        _result("2026-09-14T11:03:01.000Z", SESSION_3, ws_b, "tu_ls",
+                {"stdout": "total 0", "stderr": "", "interrupted": False}),
     ]
     write_jsonl(os.path.join(home, "projects", PROJECT_B_SLUG,
                              f"{SESSION_3}.jsonl"), s3)
