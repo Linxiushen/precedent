@@ -102,8 +102,10 @@ cd packages/acceptor
 | greedy **45.3 %** false-commit (stochastic) | deterministic |
 | the five-attack table: naive 78.0–89.7 / 99.3 / 17.3–17.7 / 32.7–37.7 / 100.0 %, guarded 0.0 / 0.7–1.3 / 1.3–2.3 / 0.3–0.7 / 0.0 %, honest baseline 2.0–3.3 % | deterministic |
 
-> **Provenance note.** `方案.md` §5 recorded **44.6 %** for greedy, from the
-> v0.2.0 build. Re-running the same commands today gives **45.8 %** (planted) and
+> **Provenance note.** `方案.md` §5 carried **44.6 %** for greedy through the
+> v0.2.0 build, and README quoted it long after it had stopped being true;
+> both now quote the current numbers, and this note is the record of what
+> the older one said. Re-running the same commands today gives **45.8 %** (planted) and
 > **45.3 %** (stochastic); `gate_power_sim.py` gives 0.44–0.46. The paper quotes today's
 > numbers and the 0.44–0.46 range. The phenomenon — PACE's 30–42 %, reproduced — is the
 > claim; the third digit is not.

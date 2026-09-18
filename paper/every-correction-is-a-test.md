@@ -54,7 +54,8 @@ real gain, greedy commits 20.7 / 15.3 / 13.3 times per run at **82 % / 72 % / 10
 false. We reproduce the phenomenon locally without any of PACE's infrastructure:
 `research/tools/gate_power_sim.py` simulates greedy acceptance at exactly zero true
 lift and reports **0.44 / 0.45 / 0.46** false-commit rate at N = 20 / 40 / 80 (the
-44.6 % headline recorded in `方案.md` §5 is this family of numbers); the policy-level
+44.6 % headline `方案.md` §5 carried through v0.2.0 is this family of numbers;
+that file now quotes today's 47.0 % / 45.8 % instead); the policy-level
 harness in `packages/acceptor` gives **45.8 %** at N = 40, 200 seeds; and the
 artefact-level benchmark in §5 gives **47.0 %** on a stream where every commit is
 false by construction.
