@@ -24,7 +24,8 @@ from precedent.hooks import (HOOK_EVENTS, MARKER, backup_path_for,
                              install, is_precedent_entry, merge_settings,
                              pre_tool_matcher, render_hook_script, render_plan,
                              render_scripts, render_status, settings_diff,
-                             settings_text, status, uninstall,
+                             settings_text, settings_text_like,
+                             status, uninstall,
                              uninstall_settings)
 from precedent.state import StateDir
 
@@ -261,7 +262,12 @@ def test_the_dry_run_diff_is_the_bytes_apply_actually_writes(tmp_path):
 
     out = install(state, [DENY], settings_path=settings, write_settings_file=True)
     after = open(settings, encoding="utf-8").read()
-    assert after == settings_text(merged)
+    # The file keeps the indent it had: `settings_text_like`, not the
+    # fixed-width `settings_text`.  This line used to assert the latter, on a
+    # file the test itself had written with four spaces and labelled "the
+    # user's own indent" — pinning the reformat that made `uninstall --apply`
+    # restore the content and not the bytes.
+    assert after == settings_text_like(merged, before)
     assert open(out["backup"], encoding="utf-8").read() == before
 
     # the diff the dry run printed is the diff between the backup it took and

@@ -472,10 +472,43 @@ def backup_settings(state, settings_path: str, now=None) -> str | None:
     return dest
 
 
-def settings_text(payload: dict) -> str:
+def detect_indent(text: str, default: int = 2) -> int:
+    """The indent width of the first indented line of a JSON document.
+
+    ``uninstall --apply`` is documented as putting the file back "byte for
+    byte".  It put every key, value and ordering back exactly, and then
+    re-serialised at a fixed indent of 2 — so a settings.json written with 4
+    spaces (or by an editor that uses tabs) came back semantically identical
+    and textually different, and the documented claim was false for anyone who
+    had not happened to use two.
+
+    Reading the width off the file and writing it back is the difference
+    between "we did not change anything" and "we did not change anything that
+    matters", and only one of those is what the sentence promised.
+    """
+    for line in text.splitlines():
+        stripped = line.lstrip(" \t")
+        if not stripped or stripped == line:
+            continue
+        lead = line[:len(line) - len(stripped)]
+        if "\t" in lead:
+            return 1                                  # a tab is one unit
+        return len(lead)
+    return default
+
+
+def settings_text(payload: dict, indent: int = 2, *, tab: bool = False) -> str:
     """The exact bytes ``--apply`` writes.  One definition, so the diff the dry
     run prints and the file the apply writes cannot drift apart."""
-    return json.dumps(payload, ensure_ascii=False, indent=2) + "\n"
+    body = json.dumps(payload, ensure_ascii=False,
+                      indent="\t" if tab else indent)
+    return body + "\n"
+
+
+def settings_text_like(payload: dict, original: str) -> str:
+    """:func:`settings_text`, formatted the way ``original`` was formatted."""
+    tab = any(ln.startswith("\t") for ln in original.splitlines())
+    return settings_text(payload, detect_indent(original), tab=tab)
 
 
 def settings_diff(settings_path: str, merged: dict) -> list[str]:
@@ -489,7 +522,7 @@ def settings_diff(settings_path: str, merged: dict) -> list[str]:
         before_label = settings_path
     except OSError:
         before, before_label = "", settings_path + "  (does not exist)"
-    after = settings_text(merged)
+    after = settings_text_like(merged, before) if before else settings_text(merged)
     return list(difflib.unified_diff(
         before.splitlines(), after.splitlines(),
         fromfile=f"{before_label}  (now, sha256 {sha256_text(before)[:12]}…)"
@@ -515,9 +548,15 @@ def write_settings(settings_path: str, payload: dict) -> str:
         mode = os.stat(settings_path).st_mode & 0o7777
     except OSError:
         pass
+    try:
+        with open(settings_path, "r", encoding="utf-8") as fh:
+            original = fh.read()
+    except OSError:
+        original = ""
+    body = settings_text_like(payload, original) if original else settings_text(payload)
     tmp = "%s.precedent.%d.tmp" % (settings_path, os.getpid())
     with open(tmp, "w", encoding="utf-8") as fh:
-        fh.write(settings_text(payload))
+        fh.write(body)
         fh.flush()
         os.fsync(fh.fileno())
     if mode is not None:
